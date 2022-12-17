@@ -69,7 +69,7 @@ public class AirWizard extends EnemyMob {
 		// Send out sparks
 		if (attackTime > 0) {
 			xmov = ymov = 0;
-			attackTime *= 0.92; // attackTime will decrease by 7% every time.
+			attackTime = (int) (attackTime * 0.92); // attackTime will decrease by 7% every time.
 			double dir = attackTime * 0.25 * (attackTime % 2 * 2 - 1); // Assigns a local direction variable from the attack time.
 			double speed = 0.7 + attackType * 0.2; // speed is dependent on the attackType. (higher attackType, faster speeds)
 			level.add(new Spark(this, Math.cos(dir) * speed, Math.sin(dir) * speed)); // Adds a spark entity with the cosine and sine of dir times speed.
