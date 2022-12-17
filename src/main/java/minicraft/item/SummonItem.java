@@ -5,7 +5,8 @@ import minicraft.core.io.Localization;
 import minicraft.entity.Direction;
 import minicraft.entity.mob.AirWizard;
 import minicraft.entity.mob.Player;
-import minicraft.gfx.Sprite;
+import minicraft.gfx.SpriteLinker.LinkedSprite;
+import minicraft.gfx.SpriteLinker.SpriteType;
 import minicraft.level.Level;
 import minicraft.level.tile.Tile;
 import org.tinylog.Logger;
@@ -17,15 +18,15 @@ public class SummonItem extends StackableItem {
 	protected static ArrayList<Item> getAllInstances() {
 		ArrayList<Item> items = new ArrayList<>();
 
-		items.add(new SummonItem("Totem of Air", new Sprite(0, 19, 0), "Air Wizard"));
+		items.add(new SummonItem("Totem of Air", new LinkedSprite(SpriteType.Item, "air_totem"), "Air Wizard"));
 
 		return items;
 	}
 
 	private final String mob;
 
-	private SummonItem(String name, Sprite sprite, String mob) { this(name, sprite, 1, mob); }
-	private SummonItem(String name, Sprite sprite, int count, String mob) {
+	private SummonItem(String name, LinkedSprite sprite, String mob) { this(name, sprite, 1, mob); }
+	private SummonItem(String name, LinkedSprite sprite, int count, String mob) {
 		super(name, sprite, count);
 		this.mob = mob;
 	}
@@ -43,7 +44,7 @@ public class SummonItem extends StackableItem {
 					if (player.payStamina(2)) {
 						AirWizard aw = new AirWizard();
 						level.add(aw, player.x + 8, player.y + 8, false);
-						Logger.debug("Summoned new Air Wizard");
+						Logger.tag("SummonItem").debug("Summoned new Air Wizard");
 						success = true;
 					}
 				} else {
@@ -52,7 +53,7 @@ public class SummonItem extends StackableItem {
 
 				break;
 			default:
-				Logger.warn("Could not create SummonItem with mob, {}", mob);
+				Logger.tag("SummonItem").warn("Could not create SummonItem with mob, {}", mob);
 				break;
 		}
 

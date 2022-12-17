@@ -8,11 +8,11 @@ import javax.swing.ImageIcon;
 import javax.swing.JOptionPane;
 
 import org.jetbrains.annotations.Nullable;
+import org.tinylog.Logger;
 
 import minicraft.core.Game;
 import minicraft.core.io.Settings;
 import minicraft.level.tile.Tiles;
-import minicraft.screen.WorldGenDisplay;
 
 public class LevelGen {
 	private static long worldSeed = 0;
@@ -114,8 +114,8 @@ public class LevelGen {
 	}
 
 	@Nullable
-	static short[][] createAndValidateMap(int w, int h, int level) {
-		worldSeed = WorldGenDisplay.getSeed();
+	static short[][] createAndValidateMap(int w, int h, int level, long seed) {
+		worldSeed = seed;
 
 		if (level == 1)
 			return createAndValidateSkyMap(w, h);
@@ -126,7 +126,7 @@ public class LevelGen {
 		if (level > -4 && level < 0)
 			return createAndValidateUndergroundMap(w, h, -level);
 
-		System.err.println("LevelGen ERROR: level index is not valid. Could not generate a level.");
+		Logger.tag("LevelGen").error("Level index is not valid. Could not generate a level.");
 
 		return null;
 	}
@@ -247,10 +247,10 @@ public class LevelGen {
 				val += 1 - dist*20;
 
 				switch ((String) Settings.get("Type")) {
-					case "Island":
+					case "minicraft.settings.type.island":
 
 						if (val < -0.5) {
-							if (Settings.get("Theme").equals("Hell"))
+							if (Settings.get("Theme").equals("minicraft.settings.theme.hell"))
 								map[i] = Tiles.get("lava").id;
 							else
 								map[i] = Tiles.get("water").id;
@@ -261,10 +261,10 @@ public class LevelGen {
 						}
 
 						break;
-					case "Box":
+					case "minicraft.settings.type.box":
 
 						if (val < -1.5) {
-							if (Settings.get("Theme").equals("Hell")) {
+							if (Settings.get("Theme").equals("minicraft.settings.theme.hell")) {
 								map[i] = Tiles.get("lava").id;
 							} else {
 								map[i] = Tiles.get("water").id;
@@ -276,12 +276,12 @@ public class LevelGen {
 						}
 
 						break;
-					case "Mountain":
+					case "minicraft.settings.type.mountain":
 
 						if (val < -0.4) {
 							map[i] = Tiles.get("grass").id;
 						} else if (val > 0.5 && mval < -1.5) {
-							if (Settings.get("Theme").equals("Hell")) {
+							if (Settings.get("Theme").equals("minicraft.settings.theme.hell")) {
 								map[i] = Tiles.get("lava").id;
 							} else {
 								map[i] = Tiles.get("water").id;
@@ -291,12 +291,12 @@ public class LevelGen {
 						}
 						break;
 
-					case "Irregular":
+					case "minicraft.settings.type.irregular":
 						if (val < -0.5 && mval < -0.5) {
-							if (Settings.get("Theme").equals("Hell")) {
+							if (Settings.get("Theme").equals("minicraft.settings.theme.hell")) {
 								map[i] = Tiles.get("lava").id;
 							}
-							if (!Settings.get("Theme").equals("Hell")) {
+							if (!Settings.get("Theme").equals("minicraft.settings.theme.hell")) {
 								map[i] = Tiles.get("water").id;
 							}
 						} else if (val > 0.5 && mval < -1.5) {
@@ -309,7 +309,7 @@ public class LevelGen {
 			}
 		}
 
-		if (Settings.get("Theme").equals("Desert")) {
+		if (Settings.get("Theme").equals("minicraft.settings.theme.desert")) {
 
 			for (int i = 0; i < w * h / 200; i++) {
 				int xs = random.nextInt(w);
@@ -332,7 +332,7 @@ public class LevelGen {
 			}
 		}
 
-		if (!Settings.get("Theme").equals("Desert")) {
+		if (!Settings.get("Theme").equals("minicraft.settings.theme.desert")) {
 
 			for (int i = 0; i < w * h / 2800; i++) {
 				int xs = random.nextInt(w);
@@ -355,7 +355,7 @@ public class LevelGen {
 			}
 		}
 
-		if (Settings.get("Theme").equals("Forest")) {
+		if (Settings.get("Theme").equals("minicraft.settings.theme.forest")) {
 			for (int i = 0; i < w * h / 200; i++) {
 				int x = random.nextInt(w);
 				int y = random.nextInt(h);
@@ -370,7 +370,7 @@ public class LevelGen {
 				}
 			}
 		}
-		if (!Settings.get("Theme").equals("Forest") && !Settings.get("Theme").equals("Plain")) {
+		if (!Settings.get("Theme").equals("minicraft.settings.theme.forest") && !Settings.get("Theme").equals("minicraft.settings.theme.plain")) {
 			for (int i = 0; i < w * h / 1200; i++) {
 				int x = random.nextInt(w);
 				int y = random.nextInt(h);
@@ -386,7 +386,7 @@ public class LevelGen {
 			}
 		}
 
-		if (Settings.get("Theme").equals("Plain")) {
+		if (Settings.get("Theme").equals("minicraft.settings.theme.plain")) {
 			for (int i = 0; i < w * h / 2800; i++) {
 				int x = random.nextInt(w);
 				int y = random.nextInt(h);
@@ -401,7 +401,7 @@ public class LevelGen {
 				}
 			}
 		}
-		if (!Settings.get("Theme").equals("Plain")) {
+		if (!Settings.get("Theme").equals("minicraft.settings.theme.plain")) {
 			for (int i = 0; i < w * h / 400; i++) {
 				int x = random.nextInt(w);
 				int y = random.nextInt(h);
@@ -762,7 +762,7 @@ public class LevelGen {
 			int lvl = maplvls[idx++ % maplvls.length];
 			if (lvl > 1 || lvl < -4) continue;
 
-			short[][] fullmap = LevelGen.createAndValidateMap(w, h, lvl);
+			short[][] fullmap = LevelGen.createAndValidateMap(w, h, lvl, LevelGen.worldSeed);
 
 			if (fullmap == null) continue;
 			short[] map = fullmap[0];

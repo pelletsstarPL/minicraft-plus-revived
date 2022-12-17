@@ -17,12 +17,13 @@ import minicraft.entity.particle.TextParticle;
 import minicraft.item.Inventory;
 import minicraft.item.Item;
 import minicraft.item.PotionType;
+import minicraft.item.Recipe;
 import minicraft.screen.*;
+import minicraft.util.Logging;
 import minicraft.util.Quest;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.tinylog.Logger;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -30,7 +31,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map.Entry;
 
 public class Save {
 
@@ -55,14 +55,14 @@ public class Save {
 		if (worldFolder.getParent().equals("saves")) {
 			String worldName = worldFolder.getName();
 			if (!worldName.toLowerCase().equals(worldName)) {
-				Logger.debug("Renaming world in " + worldFolder + " to lowercase");
+				Logging.SAVELOAD.debug("Renaming world in " + worldFolder + " to lowercase");
 				String path = worldFolder.toString();
 				path = path.substring(0, path.lastIndexOf(worldName));
 				File newFolder = new File(path + worldName.toLowerCase());
 				if (worldFolder.renameTo(newFolder))
 					worldFolder = newFolder;
 				else
-					System.err.println("Failed to rename world folder " + worldFolder + " to " + newFolder);
+					Logging.SAVELOAD.error("Failed to rename world folder " + worldFolder + " to " + newFolder);
 			}
 		}
 
@@ -87,7 +87,7 @@ public class Save {
 
 		WorldSelectDisplay.updateWorlds();
 
-		Updater.notifyAll("World Saved!");
+		Updater.notifyAll("minicraft.notification.world_saved");
 		Updater.asTick = 0;
 		Updater.saving = false;
 	}
@@ -95,14 +95,14 @@ public class Save {
 	/** This will save the settings in the settings menu. */
 	public Save() {
 		this(new File(Game.gameDir+"/"));
-		Logger.debug("Writing preferences and unlocks...");
+		Logging.SAVELOAD.debug("Writing preferences and unlocks...");
 		writePrefs();
 		writeUnlocks();
 	}
 
 	public Save(Player player, boolean writePlayer) {
 		// This is simply for access to writeToFile.
-		this(new File(Game.gameDir+"/saves/"+ WorldSelectDisplay.getWorldName() + "/"));
+		this(new File(Game.gameDir+"/saves/"+WorldSelectDisplay.getWorldName() + "/"));
 		if (writePlayer) {
 			writePlayer("Player", player);
 			writeInventory("Inventory", player);
@@ -155,11 +155,14 @@ public class Save {
 
 	private void writeGame(String filename) {
 		data.add(String.valueOf(Game.VERSION));
-		data.add(Settings.getIdx("mode") + (Game.isMode("score") ? ";" + Updater.scoreTime + ";" + Settings.get("scoretime") : ""));
+		data.add(String.valueOf(World.getWorldSeed()));
+		data.add(Settings.getIdx("mode") + (Game.isMode("minicraft.settings.mode.score") ? ";" + Updater.scoreTime + ";" + Settings.get("scoretime") : ""));
 		data.add(String.valueOf(Updater.tickCount));
 		data.add(String.valueOf(Updater.gameTime));
 		data.add(String.valueOf(Settings.getIdx("diff")));
 		data.add(String.valueOf(AirWizard.beaten));
+		data.add(String.valueOf(Settings.get("quests")));
+		data.add(String.valueOf(Settings.get("tutorials")));
 		writeToFile(location + filename + extension, data);
 	}
 
@@ -167,17 +170,17 @@ public class Save {
 		JSONObject json = new JSONObject();
 
 		json.put("version", String.valueOf(Game.VERSION));
-		json.put("diff", Settings.get("diff"));
 		json.put("sound", String.valueOf(Settings.get("sound")));
 		json.put("autosave", String.valueOf(Settings.get("autosave")));
 		json.put("fps", String.valueOf(Settings.get("fps")));
 		json.put("lang", Localization.getSelectedLocale().toLanguageTag());
-		json.put("skinIdx", String.valueOf(SkinDisplay.getSelectedSkinIndex()));
+		json.put("skin", String.valueOf(SkinDisplay.getSelectedSkin()));
 		json.put("savedIP", MultiplayerDisplay.savedIP);
 		json.put("savedUUID", MultiplayerDisplay.savedUUID);
 		json.put("savedUsername", MultiplayerDisplay.savedUsername);
 		json.put("keymap", new JSONArray(Game.input.getKeyPrefs()));
-		json.put("resourcePack", ResourcePackDisplay.getLoadedPack());
+		json.put("resourcePacks", new JSONArray(ResourcePackDisplay.getLoadedPacks()));
+		json.put("showquests", String.valueOf(Settings.get("showquests")));
 
 		// Save json
 		try {
@@ -207,7 +210,7 @@ public class Save {
 	}
 
 	private void writeWorld(String filename) {
-		LoadingDisplay.setMessage("Levels");
+		LoadingDisplay.setMessage("minicraft.displays.loading.message.levels");
 		for (int l = 0; l < World.levels.length; l++) {
 			String worldSize = String.valueOf(Settings.get("size"));
 			data.add(worldSize);
@@ -234,34 +237,39 @@ public class Save {
 			writeToFile(location + filename + l + "data" + extension, data);
 		}
 
-		JSONObject fileObj = new JSONObject();
-		JSONArray unlockedQuests = new JSONArray();
-		JSONArray doneQuests = new JSONArray();
-		JSONObject questData = new JSONObject();
+		if ((boolean) Settings.get("quests") || (boolean) Settings.get("tutorials")) {
+			JSONObject fileObj = new JSONObject();
+			JSONArray unlockedQuests = new JSONArray();
+			JSONArray doneQuests = new JSONArray();
+			JSONObject questData = new JSONObject(QuestsDisplay.getStatusQuests());
+			JSONObject lockedRecipes = new JSONObject();
 
-		for (Quest q : QuestsDisplay.getUnlockedQuests()) {
-			unlockedQuests.put(q.id);
-		}
-		
-		for (Quest q : QuestsDisplay.getCompleteQuest()) {
-			doneQuests.put(q.id);
-		}
+			for (Quest q : QuestsDisplay.getUnlockedQuests()) {
+				unlockedQuests.put(q.id);
+			}
 
-		for (Entry<String, QuestsDisplay.QuestStatus> e : QuestsDisplay.getStatusQuests().entrySet()) {
-			questData.put(e.getKey(), e.getValue().toQuestString());
-		}
+			for (Quest q : QuestsDisplay.getCompletedQuest()) {
+				doneQuests.put(q.id);
+			}
 
-		fileObj.put("unlocked", unlockedQuests);
-		fileObj.put("done", doneQuests);
-		fileObj.put("data", questData);
-		fileObj.put("tutorials", Settings.getIdx("tutorials"));
+			for (Recipe recipe : CraftingDisplay.getLockedRecipes()) {
+				JSONArray costs = new JSONArray();
+				recipe.getCosts().forEach((c, i) -> costs.put(c + "_" + i));
+				lockedRecipes.put(recipe.getProduct().getName() + "_" + recipe.getAmount(), costs);
+			}
 
-		try {
-			writeJSONToFile(location + "Quests.json", fileObj.toString());
+			fileObj.put("unlocked", unlockedQuests);
+			fileObj.put("done", doneQuests);
+			fileObj.put("data", questData);
+			fileObj.put("lockedRecipes", lockedRecipes);
 
-		} catch (IOException e1) {
-			e1.printStackTrace();
-			Logger.error("Unable to write Quests.json.");
+			try {
+				writeJSONToFile(location + "Quests.json", fileObj.toString());
+
+			} catch (IOException e1) {
+				e1.printStackTrace();
+				Logging.SAVELOAD.error("Unable to write Quests.json.");
+			}
 		}
 	}
 
@@ -316,7 +324,7 @@ public class Save {
 	}
 
 	private void writeEntities(String filename) {
-		LoadingDisplay.setMessage("Entities");
+		LoadingDisplay.setMessage("minicraft.displays.loading.message.entities");
 		for (int l = 0; l < World.levels.length; l++) {
 			for (Entity e: World.levels[l].getEntitiesToSave()) {
 				String saved = writeEntity(e, true);
@@ -387,7 +395,7 @@ public class Save {
 
 		int depth = 0;
 		if (e.getLevel() == null)
-			System.out.println("WARNING: Saving entity with no level reference: " + e + "; setting level to surface");
+			Logging.SAVELOAD.warn("Saving entity with no level reference: " + e + "; setting level to surface");
 		else
 			depth = e.getLevel().depth;
 

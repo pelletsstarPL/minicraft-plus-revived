@@ -13,7 +13,11 @@ import javax.swing.JFrame;
 import javax.swing.WindowConstants;
 
 import minicraft.core.io.FileHandler;
-import org.tinylog.Logger;
+import minicraft.util.Logging;
+import minicraft.util.TinylogLoggingProvider;
+
+import org.jetbrains.annotations.Nullable;
+import org.tinylog.provider.ProviderRegistry;
 
 public class Initializer extends Game {
 	private Initializer() {}
@@ -27,26 +31,31 @@ public class Initializer extends Game {
 	public static int getCurFps() { return fra; }
 
 	static void parseArgs(String[] args) {
-		boolean debug = false;
-
 		// Parses command line arguments
-		String saveDir = FileHandler.getSystemGameDir();
+		@Nullable
+		String saveDir = null;
 		for (int i = 0; i < args.length; i++) {
-			if (args[i].equals("--debug")) {
+			if (args[i].equalsIgnoreCase("--debug")) {
 				debug = true;
-			} else if (args[i].equals("--savedir") && i+1 < args.length) {
+			} else if (args[i].equalsIgnoreCase("--savedir") && i + 1 < args.length) {
 				i++;
 				saveDir = args[i];
-			} else if (args[i].equals("--fullscreen")) {
+			} else if (args[i].equalsIgnoreCase("--fullscreen")) {
 				Updater.FULLSCREEN = true;
+			} else if (args[i].equalsIgnoreCase("--debug-log-time")) {
+				Logging.logTime = true;
+			} else if (args[i].equalsIgnoreCase("--debug-log-thread")) {
+				Logging.logThread = true;
+			} else if (args[i].equalsIgnoreCase("--debug-log-trace")) {
+				Logging.logTrace = true;
+			} else if (args[i].equalsIgnoreCase("--debug-filelog-full")) {
+				Logging.fileLogFull = true;
 			}
 		}
-		Game.debug = debug;
+		((TinylogLoggingProvider) ProviderRegistry.getLoggingProvider()).init();
 
 		FileHandler.determineGameDir(saveDir);
 	}
-
-
 
 	/** This is the main loop that runs the game. It:
 	 *	-keeps track of the amount of time that has passed
@@ -105,7 +114,7 @@ public class Initializer extends Game {
 			BufferedImage logo = ImageIO.read(Game.class.getResourceAsStream("/resources/logo.png")); // Load the window logo
 			frame.setIconImage(logo);
 		} catch (IOException e) {
-			e.printStackTrace();
+			CrashHandler.errorHandle(e);
 		}
 
 		frame.setLocationRelativeTo(null); // The window will pop up in the middle of the screen when launched.
@@ -124,9 +133,9 @@ public class Initializer extends Game {
 			public void windowIconified(WindowEvent e) {}
 			public void windowDeiconified(WindowEvent e) {}
 			public void windowOpened(WindowEvent e) {}
-			public void windowClosed(WindowEvent e) { Logger.debug("Window closed"); }
+			public void windowClosed(WindowEvent e) { Logging.GAMEHANDLER.debug("Window closed"); }
 			public void windowClosing(WindowEvent e) {
-				Logger.info("Window closing");
+				Logging.GAMEHANDLER.info("Window closing");
 				quit();
 			}
 		});
@@ -149,8 +158,7 @@ public class Initializer extends Game {
 		String exceptionStr;
 		try {
 			exceptionStr = bytestream.toString("UTF-8");
-		}
-		catch(Exception ex) {
+		} catch (Exception ex) {
 			exceptionStr = "Unavailable";
 		}
 		return exceptionStr;

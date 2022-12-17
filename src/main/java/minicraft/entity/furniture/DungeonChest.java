@@ -1,13 +1,14 @@
 package minicraft.entity.furniture;
 
-import minicraft.core.Game;
+import minicraft.core.io.Localization;
 import minicraft.entity.Direction;
 import minicraft.entity.Entity;
 import minicraft.entity.mob.Player;
 import minicraft.entity.particle.SmashParticle;
 import minicraft.entity.particle.TextParticle;
 import minicraft.gfx.Color;
-import minicraft.gfx.Sprite;
+import minicraft.gfx.SpriteLinker.LinkedSprite;
+import minicraft.gfx.SpriteLinker.SpriteType;
 import minicraft.item.Inventory;
 import minicraft.item.Item;
 import minicraft.item.Items;
@@ -17,8 +18,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Random;
 
 public class DungeonChest extends Chest {
-	private static final Sprite openSprite = new Sprite(14, 24, 2, 2, 2);
-	private static final Sprite lockSprite = new Sprite(12, 24, 2, 2, 2);
+	private static final LinkedSprite openSprite = new LinkedSprite(SpriteType.Entity, "dungeon_chest");
+	private static final LinkedSprite lockSprite = new LinkedSprite(SpriteType.Entity, "white_chest");
 
 	public Random random = new Random();
 	private boolean isLocked;
@@ -51,20 +52,18 @@ public class DungeonChest extends Chest {
 			boolean invKey = player.getInventory().count(Items.get("key")) > 0;
 
 			if(activeKey || invKey) { // If the player has a key...
-				if (!Game.isMode("creative")) { // Remove the key unless on creative mode.
-					if (activeKey) { // Remove activeItem
-						StackableItem key = (StackableItem)player.activeItem;
-						key.count--;
-					} else { // Remove from inv
-						player.getInventory().removeItem(Items.get("key"));
-					}
+				if (activeKey) { // Remove activeItem
+					StackableItem key = (StackableItem)player.activeItem;
+					key.count--;
+				} else { // Remove from inv
+					player.getInventory().removeItem(Items.get("key"));
 				}
 
 				isLocked = false;
 				this.sprite = openSprite; // Set to the unlocked color
 
 				level.add(new SmashParticle(x * 16, y * 16));
-				level.add(new TextParticle("-1 key", x, y, Color.RED));
+				level.add(new TextParticle(Localization.getLocalized("minicraft.text_particales.key_consumed"), x, y, Color.RED));
 				level.chestCount--;
 
 				// If this is the last chest.

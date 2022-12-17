@@ -11,24 +11,24 @@ import minicraft.item.Item;
 import minicraft.item.StackableItem;
 
 public class ContainerDisplay extends Display {
-	
+
 	private static final int padding = 10;
-	
+
 	private Player player;
 	private Chest chest;
-	
+
 	public ContainerDisplay(Player player, Chest chest) {
-		super(new InventoryMenu(chest, chest.getInventory(), chest.name), new InventoryMenu(player, player.getInventory(), "Inventory"));
+		super(new InventoryMenu(chest, chest.getInventory(), chest.name, RelPos.LEFT), new InventoryMenu(player, player.getInventory(), "minicraft.display.menus.inventory", RelPos.RIGHT));
 		//pInv = player.getInventory();
 		//cInv = chest.getInventory();
 		this.player = player;
 		this.chest = chest;
-		
+
 		menus[1].translate(menus[0].getBounds().getWidth() + padding, 0);
-		
+
 		if(menus[0].getNumOptions() == 0) onSelectionChange(0, 1);
 	}
-	
+
 	@Override
 	protected void onSelectionChange(int oldSel, int newSel) {
 		super.onSelectionChange(oldSel, newSel);
@@ -39,22 +39,23 @@ public class ContainerDisplay extends Display {
 		for(Menu m: menus)
 			m.translate(shift, 0);
 	}
-	
-	private int getOtherIdx() { return (selection+1) % 2; }
-	
+
+	private int getOtherIdx() { return selection ^ 1; }
+
 	@Override
 	public void tick(InputHandler input) {
 		super.tick(input);
-		
+
 		if(input.getKey("menu").clicked || chest.isRemoved()) {
 			Game.setDisplay(null);
 			return;
 		}
-		
+
 		Menu curMenu = menus[selection];
 		int otherIdx = getOtherIdx();
-		
-		if(curMenu.getNumOptions() > 0 && (input.getKey("attack").clicked || input.getKey("drop-one").clicked)) {
+
+		if((input.getKey("attack").clicked) || input.getKey("shift-enter").clicked) {
+			if (curMenu.getEntries().length == 0) return;
 			// switch inventories
 			Inventory from, to;
 			if(selection == 0) {
@@ -64,37 +65,48 @@ public class ContainerDisplay extends Display {
 				from = player.getInventory();
 				to = chest.getInventory();
 			}
-			
+
 			int toSel = menus[otherIdx].getSelection();
 			int fromSel = curMenu.getSelection();
-			
-			Item fromItem = from.get(fromSel);
-			
-			boolean transferAll = input.getKey("attack").clicked || !(fromItem instanceof StackableItem) || ((StackableItem)fromItem).count == 1;
-			
-			Item toItem = fromItem.clone();
-			
-			if(!transferAll) {
-				((StackableItem)fromItem).count--; // this is known to be valid.
-				((StackableItem)toItem).count = 1;
-				// items are setup for sending.
-			}
-			else { // transfer whole item/stack.
-				if(! (Game.isMode("creative") && from == player.getInventory()) )
-					from.remove(fromSel); // remove it
-			}
-			
 
-			to.add(toSel, toItem);
-			update();
+			Item fromItem = from.get(fromSel);
+
+			boolean transferAll = input.getKey("shift-enter").clicked || !(fromItem instanceof StackableItem) || ((StackableItem)fromItem).count == 1;
+
+			Item toItem = fromItem.clone();
+
+			if (fromItem instanceof StackableItem) {
+				int move = 1;
+				if (!transferAll) {
+					((StackableItem)toItem).count = 1;
+				} else {
+					move = ((StackableItem)fromItem).count;
+				}
+
+				int moved = to.add(toSel, toItem);
+				if (moved < move) {
+					((StackableItem)fromItem).count -= moved;
+				} else if (!transferAll) {
+					((StackableItem)fromItem).count--;
+				} else {
+					from.remove(fromSel);
+				}
+				update();
+			} else {
+				int moved = to.add(toSel, toItem);
+				if (moved == 1) {
+					from.remove(fromSel);
+					update();
+				}
+			}
 		}
 	}
-	
+
 	public void onInvUpdate(ItemHolder holder) {
 		if(holder == player || holder == chest)
 			update();
 	}
-	
+
 	private void update() {
 		menus[0] = new InventoryMenu((InventoryMenu) menus[0]);
 		menus[1] = new InventoryMenu((InventoryMenu) menus[1]);

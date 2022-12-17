@@ -2,6 +2,7 @@ package minicraft.level;
 
 import minicraft.core.Game;
 import minicraft.core.Updater;
+import minicraft.core.io.Localization;
 import minicraft.core.io.Settings;
 import minicraft.entity.Entity;
 import minicraft.entity.ItemEntity;
@@ -17,18 +18,18 @@ import minicraft.item.Item;
 import minicraft.level.tile.Tile;
 import minicraft.level.tile.Tiles;
 import minicraft.level.tile.TorchTile;
-import org.tinylog.Logger;
+import minicraft.util.Logging;
 
 import java.util.*;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 
 public class Level {
-	private final Random random = new Random();
+	private final Random random;
 
 	private static final String[] levelNames = {"Sky", "Surface", "Iron", "Gold", "Lava", "Dungeon"};
 	public static String getLevelName(int depth) { return levelNames[-1 * depth + 1]; }
-	public static String getDepthString(int depth) { return "Level " + (depth < 0 ? "B" + (-depth) : depth); }
+	public static String getDepthString(int depth) { return Localization.getLocalized("minicraft.displays.loading.message.level", depth < 0 ? "B" + (-depth) : depth); }
 
 	private static final int MOB_SPAWN_FACTOR = 100; // The chance of a mob actually trying to spawn when trySpawn is called equals: mobCount / maxMobCount * MOB_SPAWN_FACTOR. so, it basically equals the chance, 1/number, of a mob spawning when the mob cap is reached. I hope that makes sense...
 
@@ -74,7 +75,7 @@ public class Level {
 	public void printLevelLoc(String prefix, int x, int y, String suffix) {
 		String levelName = getLevelName(depth);
 
-		Logger.info("{} on {} level ({}, {}){}", prefix, levelName, x, y, suffix);
+		Logging.WORLDNAMED.info("{} on {} level ({}, {}){}", prefix, levelName, x, y, suffix);
 	}
 
 	public void printTileLocs(Tile t) {
@@ -92,7 +93,7 @@ public class Level {
 			}
 		}
 
-		System.out.println("Found " + numfound + " entities in level of depth " + depth);
+		Logging.WORLDNAMED.info("Found " + numfound + " entities in level of depth " + depth);
 	}
 
 	private void updateMobCap() {
@@ -106,6 +107,7 @@ public class Level {
 		this.w = w;
 		this.h = h;
 		this.seed = seed;
+		random = new Random(seed);
 		short[][] maps; // Multidimensional array (an array within a array), used for the map
 
 		if (level != -4 && level != 0)
@@ -120,11 +122,11 @@ public class Level {
 			return;
 		}
 
-		Logger.debug("Making level " + level + "...");
+		Logging.WORLD.debug("Making level " + level + "...");
 
-		maps = LevelGen.createAndValidateMap(w, h, level);
+		maps = LevelGen.createAndValidateMap(w, h, level, seed);
 		if (maps == null) {
-			Logger.error("Level generation: Returned maps array is null");
+			Logging.WORLD.error("Level generation: Returned maps array is null");
 			return;
 		}
 
@@ -146,7 +148,7 @@ public class Level {
 							Structure.dungeonGate.draw(this, x, y);
 
 						else if (level == 0) { // Surface
-							Logger.trace("Setting tiles around " + x + "," + y + " to hard rock");
+							Logging.WORLD.trace("Setting tiles around " + x + "," + y + " to hard rock");
 							setAreaTiles(x, y, 1, Tiles.get("Hard Rock"), 0); // surround the sky stairs with hard rock
 						}
 						else // Any other level, the up-stairs should have dirt on all sides.
@@ -236,7 +238,7 @@ public class Level {
 			for (Entity e: entities)
 				if (e instanceof DungeonChest)
 					numChests++;
-			Logger.debug("Found " + numChests + " chests.");
+			Logging.WORLDNAMED.debug("Found " + numChests + " chests.");
 		}
 
 		/// Make DungeonChests!
@@ -605,7 +607,7 @@ public class Level {
 	public void removeAllEnemies() {
 		for (Entity e: getEntityArray()) {
 			if (e instanceof EnemyMob)
-				if (!(e instanceof AirWizard) || Game.isMode("creative")) // Don't remove the airwizard bosses! Unless in creative, since you can spawn more.
+				if (!(e instanceof AirWizard) || Game.isMode("minicraft.settings.mode.creative")) // Don't remove the airwizard bosses! Unless in creative, since you can spawn more.
 					e.remove();
 		}
 	}

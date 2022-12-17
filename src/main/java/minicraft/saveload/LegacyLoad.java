@@ -11,6 +11,7 @@ import minicraft.item.*;
 import minicraft.level.Level;
 import minicraft.level.tile.Tiles;
 import minicraft.screen.LoadingDisplay;
+import minicraft.util.Logging;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -19,6 +20,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+
+import org.tinylog.Logger;
 
 /// This class is simply a way to seperate all the old, compatibility complications into a seperate file.
 public class LegacyLoad {
@@ -35,6 +38,8 @@ public class LegacyLoad {
 	boolean oldSave = false;
 
 	Game game = null;
+
+	private DeathChest deathChest;
 
 	{
 		currentVer = Game.VERSION;
@@ -63,6 +68,11 @@ public class LegacyLoad {
 		loadInventory("Inventory", Game.player.getInventory());
 		loadEntities("Entities", Game.player);
 		LoadingDisplay.setPercentage(0); // reset
+
+		if (deathChest != null && deathChest.getInventory().invSize() > 0) {
+			Game.player.getLevel().add(deathChest, Game.player.x, Game.player.y);
+			Logging.SAVELOAD.debug("Added DeathChest which contains exceed items.");
+		}
 	}
 
 	protected LegacyLoad(File unlocksFile) {
@@ -170,7 +180,7 @@ public class LegacyLoad {
 				Settings.set("sound", Boolean.parseBoolean(data.get(4)));
 			} else { // version == 1.8?
 				if (!oldSave) {
-					System.out.println("UNEXPECTED WORLD VERSION");
+					Logging.SAVELOAD.warn("UNEXPECTED WORLD VERSION");
 					worldVer = new Version("1.8.1");
 				}
 				// For backwards compatibility
@@ -275,6 +285,7 @@ public class LegacyLoad {
 	}
 
 	public void loadInventory(String filename, Inventory inventory) {
+		deathChest = new DeathChest();
 		loadFromFile(location + filename + extension);
 		inventory.clearInv();
 
@@ -285,7 +296,8 @@ public class LegacyLoad {
 		}
 
 		if (playerac > 0 && inventory == Game.player.getInventory()) {
-			inventory.add(Items.get("arrow"), playerac);
+			for (int i = 0; i < playerac; i++)
+				loadItem(inventory, Items.get("arrow"));
 			playerac = 0;
 		}
 	}
@@ -299,11 +311,22 @@ public class LegacyLoad {
 			//System.out.println("Item to fetch: " + itemName + "; count=" + curData[1]);
 			Item newItem = Items.get(itemName);
 			int count = Integer.parseInt(curData[1]);
-			inventory.add(newItem, count);
+			for (int i = 0; i < count; i++)
+				loadItem(inventory, newItem);
 		} else {
 			if (oldSave) item = subOldName(item);
 			Item toAdd = Items.get(item);
-			inventory.add(toAdd);
+			loadItem(inventory, toAdd);
+		}
+	}
+
+	private void loadItem(Inventory inventory, Item item) {
+		int total = 1;
+		if (item instanceof StackableItem) total = ((StackableItem) item).count;
+		int loaded = inventory.add(item);
+
+		if (loaded < total) {
+			deathChest.getInventory().add(item.clone());
 		}
 	}
 
@@ -409,7 +432,7 @@ public class LegacyLoad {
 			case "Lantern": return new Lantern(Lantern.Type.NORM);
 			case "IronLantern": return new Lantern(Lantern.Type.IRON);
 			case "GoldLantern": return new Lantern(Lantern.Type.GOLD);
-			default : System.out.println("LEGACYLOAD: Unknown or outdated entity requested: " + string);
+			default : Logger.tag("SaveLoad/LegacyLoad").warn("Unknown or outdated entity requested: " + string);
 				return null;
 		}
 	}

@@ -1,17 +1,11 @@
 package minicraft.screen;
 
 import minicraft.core.Game;
-import minicraft.core.Initializer;
-import minicraft.core.Renderer;
-import minicraft.core.io.InputHandler;
 import minicraft.core.io.Localization;
 import minicraft.core.io.Settings;
-import minicraft.gfx.Color;
-import minicraft.gfx.Screen;
+import minicraft.core.io.Localization.LocaleInformation;
 import minicraft.saveload.Save;
-import minicraft.screen.entry.BlankEntry;
 import minicraft.screen.entry.SelectEntry;
-import minicraft.screen.entry.StringEntry;
 
 public class OptionsMainMenuDisplay extends Display {
 
@@ -19,13 +13,16 @@ public class OptionsMainMenuDisplay extends Display {
         super(true);
 
         Menu optionsMenu = new Menu.Builder(false, 6, RelPos.LEFT,
-            Settings.getEntry("fps"),
-            Settings.getEntry("sound"),
-            new SelectEntry("Change Key Bindings", () -> Game.setDisplay(new KeyInputDisplay())),
-            Settings.getEntry("language"),
-            new SelectEntry("Resource packs", () -> Game.setDisplay(new ResourcePackDisplay())))
-            .setTitle("Main Menu Options")
-            .createMenu();
+			Settings.getEntry("fps"),
+			Settings.getEntry("sound"),
+			Settings.getEntry("showquests"),
+			new SelectEntry("minicraft.display.options_display.change_key_bindings", () -> Game.setDisplay(new KeyInputDisplay())),
+			Settings.getEntry("language"),
+			Settings.getEntry("screenshot"),
+			new SelectEntry("minicraft.displays.options_main_menu.resource_packs", () -> Game.setDisplay(new ResourcePackDisplay()))
+		)
+			.setTitle("minicraft.displays.options_main_menu")
+			.createMenu();
 
         menus = new Menu[]{
             optionsMenu
@@ -34,7 +31,7 @@ public class OptionsMainMenuDisplay extends Display {
 
     @Override
     public void onExit() {
-        Localization.changeLanguage((String)Settings.get("language"));
+        Localization.changeLanguage(((LocaleInformation)Settings.get("language")).locale.toLanguageTag());
         new Save();
         Game.MAX_FPS = (int)Settings.get("fps");
     }

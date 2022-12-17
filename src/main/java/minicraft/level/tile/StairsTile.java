@@ -7,23 +7,28 @@ import minicraft.entity.Entity;
 import minicraft.entity.furniture.Furniture;
 import minicraft.entity.mob.Player;
 import minicraft.gfx.Screen;
-import minicraft.gfx.Sprite;
+import minicraft.gfx.SpriteAnimation;
+import minicraft.gfx.SpriteLinker.SpriteType;
 import minicraft.item.Item;
 import minicraft.item.PowerGloveItem;
 import minicraft.level.Level;
 
 public class StairsTile extends Tile {
-	private static Sprite down = new Sprite(21, 0, 2, 2, 1, 0);
-	private static Sprite up = new Sprite(19, 0, 2, 2, 1, 0);
-	
+	private static SpriteAnimation down = new SpriteAnimation(SpriteType.Tile, "stairs_down");
+	private static SpriteAnimation up = new SpriteAnimation(SpriteType.Tile, "stairs_up");
+
 	protected StairsTile(String name, boolean leadsUp) {
 		super(name, leadsUp ? up : down);
 		maySpawn = false;
 	}
-	
+
 	@Override
 	public void render(Screen screen, Level level, int x, int y) {
-		sprite.render(screen, x * 16, y * 16, 0, DirtTile.dCol(level.depth));
+		if (level.depth == 1)
+			Tiles.get("cloud").render(screen, level, x, y);
+		else
+			Tiles.get("dirt").render(screen, level, x, y);
+		sprite.render(screen, level, x, y);
 	}
 
 	public boolean mayPass(Level level, int x, int y, Entity e) {
@@ -35,9 +40,9 @@ public class StairsTile extends Tile {
 		super.interact(level, xt, yt, player, item, attackDir);
 
 		// Makes it so you can remove the stairs if you are in creative and debug mode.
-		if (item instanceof PowerGloveItem && Game.isMode("Creative") && Game.debug) {
+		if (item instanceof PowerGloveItem && Game.isMode("minicraft.settings.mode.creative") && Game.debug) {
 			level.setTile(xt, yt, Tiles.get("Grass"));
-			Sound.monsterHurt.play();
+			Sound.play("monsterhurt");
 			return true;
 		} else {
 			return false;

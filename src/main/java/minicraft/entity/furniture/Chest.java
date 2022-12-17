@@ -1,10 +1,12 @@
 package minicraft.entity.furniture;
 
+import minicraft.core.CrashHandler;
 import minicraft.core.Game;
 import minicraft.entity.Direction;
 import minicraft.entity.ItemHolder;
 import minicraft.entity.mob.Player;
-import minicraft.gfx.Sprite;
+import minicraft.gfx.SpriteLinker.LinkedSprite;
+import minicraft.gfx.SpriteLinker.SpriteType;
 import minicraft.item.Inventory;
 import minicraft.item.Item;
 import minicraft.item.Items;
@@ -20,12 +22,13 @@ public class Chest extends Furniture implements ItemHolder {
 
 	public Chest() { this("Chest"); }
 
+	public Chest(String name) { this(name, new LinkedSprite(SpriteType.Item, "chest")); }
 	/**
 	 * Creates a chest with a custom name.
 	 * @param name Name of chest.
 	 */
-	public Chest(String name) {
-		super(name, new Sprite(10, 26, 2, 2, 2), 3, 3); // Name of the chest
+	public Chest(String name, LinkedSprite itemSprite) {
+		super(name, new LinkedSprite(SpriteType.Entity, "chest"), itemSprite, 3, 3); // Name of the chest
 
 		inventory = new Inventory(); // Initialize the inventory.
 	}
@@ -38,7 +41,7 @@ public class Chest extends Furniture implements ItemHolder {
 
 	public void populateInvRandom(String lootTable, int depth) {
 		try {
-			String[] lines = Load.loadFile("/resources/chestloot/" + lootTable + ".txt").toArray(new String[]{});
+			String[] lines = Load.loadFile("/resources/data/chestloot/" + lootTable + ".txt").toArray(new String[]{});
 
 			for (String line : lines) {
 				//System.out.println(line);
@@ -54,8 +57,7 @@ public class Chest extends Furniture implements ItemHolder {
 				}
 			}
 		} catch (IOException e) {
-			System.out.println("Couldn't read loot table \"" + lootTable + ".txt" + "\"");
-			e.printStackTrace();
+			CrashHandler.errorHandle(e, new CrashHandler.ErrorInfo("Loot table", CrashHandler.ErrorInfo.ErrorType.REPORT, "Couldn't read loot table \"" + lootTable + ".txt" + "\""));
 		}
 	}
 

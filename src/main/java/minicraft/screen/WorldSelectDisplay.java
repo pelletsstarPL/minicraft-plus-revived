@@ -1,20 +1,26 @@
 package minicraft.screen;
 
-import java.io.File;
-import java.util.ArrayList;
-
 import minicraft.core.Game;
+import minicraft.core.io.FileHandler;
 import minicraft.core.io.InputHandler;
 import minicraft.core.io.Localization;
+import minicraft.core.io.Sound;
 import minicraft.gfx.Color;
 import minicraft.gfx.Font;
 import minicraft.gfx.Screen;
 import minicraft.saveload.Load;
 import minicraft.saveload.Save;
 import minicraft.saveload.Version;
+import minicraft.screen.entry.InputEntry;
+import minicraft.screen.entry.ListEntry;
 import minicraft.screen.entry.SelectEntry;
-import minicraft.screen.WorldEditDisplay.Action;
-import org.tinylog.Logger;
+import minicraft.screen.entry.StringEntry;
+import minicraft.util.Logging;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class WorldSelectDisplay extends Display {
 
@@ -33,25 +39,22 @@ public class WorldSelectDisplay extends Display {
 	public WorldSelectDisplay() {
 		super(true);
 	}
-	
+
 	@Override
 	public void init(Display parent) {
-		if (parent instanceof WorldEditDisplay && parent.getParent() != null) {
-			// this should get original parent when World Select Display
-			// changed to World Edit Display
-			super.init(parent.getParent().getParent());
-		} else {
-			super.init(parent);
-		}
+		super.init(parent);
 
 		worldName = "";
 		loadedWorld = true;
 
 		// Update world list
 		updateWorlds();
-		
+		updateEntries();
+	}
+
+	private void updateEntries() {
 		SelectEntry[] entries = new SelectEntry[worldNames.size()];
-		
+
 		for (int i = 0; i < entries.length; i++) {
 			final String name = worldNames.get(i);
 			final Version version = worldVersions.get(i);
@@ -71,62 +74,193 @@ public class WorldSelectDisplay extends Display {
 				.createMenu()
 		};
 	}
-	
+
 	@Override
 	public void tick(InputHandler input) {
 		super.tick(input);
 
-		for (Action a : Action.values()) {
-			if (input.getKey(a.key).clicked) {
-				Game.setDisplay(new WorldEditDisplay(a));
-				break;
-			}
+		if (input.getKey("SHIFT-C").clicked) {
+			ArrayList<ListEntry> entries = new ArrayList<>();
+			ArrayList<String> names = WorldSelectDisplay.getWorldNames();
+			entries.add(new StringEntry("minicraft.displays.world_select.popups.display.change", Color.BLUE));
+			entries.add(WorldGenDisplay.makeWorldNameInput("", names, worldName, false));
+			entries.addAll(Arrays.asList(StringEntry.useLines(Color.WHITE, "",
+				Localization.getLocalized("minicraft.displays.world_select.popups.display.confirm", Game.input.getMapping("select")),
+				Localization.getLocalized("minicraft.displays.world_select.popups.display.cancel", Game.input.getMapping("exit"))
+			)));
+
+			ArrayList<PopupDisplay.PopupActionCallback> callbacks = new ArrayList<>();
+			callbacks.add(new PopupDisplay.PopupActionCallback("select", popup -> {
+				InputEntry entry;
+
+				// The location of the world folder on the disk.
+				File world = new File(worldsDir + worldNames.get(menus[0].getSelection()));
+
+				// Do the action.
+				entry = (InputEntry) popup.getCurEntry();
+				if (!entry.isValid())
+					return false;
+				//user hits enter with a valid new name; copy is created here.
+				String newname = entry.getUserInput();
+				File newworld = new File(worldsDir + newname);
+				newworld.mkdirs();
+				Logging.GAMEHANDLER.debug("Copying world {} to world {}.", world, newworld);
+				// walk file tree
+				try {
+					FileHandler.copyFolderContents(world.toPath(), newworld.toPath(), FileHandler.REPLACE_EXISTING, false);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+
+				Sound.play("confirm");
+				updateWorlds();
+				updateEntries();
+				if (WorldSelectDisplay.getWorldNames().size() > 0) {
+					Game.exitDisplay();
+				} else {
+					Game.exitDisplay();
+					Game.exitDisplay();
+					Game.setDisplay(new WorldGenDisplay());
+				}
+
+				return true;
+			}));
+
+			Game.setDisplay(new PopupDisplay(new PopupDisplay.PopupConfig(null, callbacks, 0), entries.toArray(new ListEntry[0])));
+		} else if (input.getKey("SHIFT-R").clicked) {
+			ArrayList<ListEntry> entries = new ArrayList<>();
+			ArrayList<String> names = WorldSelectDisplay.getWorldNames();
+			names.remove(worldName);
+			entries.add(new StringEntry("minicraft.displays.world_select.popups.display.change", Color.GREEN));
+			entries.add(WorldGenDisplay.makeWorldNameInput("", names, worldName, false));
+			entries.addAll(Arrays.asList(StringEntry.useLines(Color.WHITE, "",
+				Localization.getLocalized("minicraft.displays.world_select.popups.display.confirm", Game.input.getMapping("select")),
+				Localization.getLocalized("minicraft.displays.world_select.popups.display.cancel", Game.input.getMapping("exit"))
+			)));
+
+			ArrayList<PopupDisplay.PopupActionCallback> callbacks = new ArrayList<>();
+			callbacks.add(new PopupDisplay.PopupActionCallback("select", popup -> {
+				// The location of the world folder on the disk.
+				File world = new File(worldsDir + worldNames.get(menus[0].getSelection()));
+
+				// Do the action.
+				InputEntry entry = (InputEntry) popup.getCurEntry();
+				if (!entry.isValid())
+					return false;
+
+				// User hits enter with a vaild new name; name is set here:
+				String name = entry.getUserInput();
+
+				// Try to rename the file, if it works, return
+				if (world.renameTo(new File(worldsDir + name))) {
+					Logging.GAMEHANDLER.debug("Renaming world {} to new name: {}", world, name);
+					WorldSelectDisplay.updateWorlds();
+				} else {
+					Logging.GAMEHANDLER.error("Rename failed in WorldEditDisplay.");
+				}
+
+				Sound.play("confirm");
+				updateWorlds();
+				updateEntries();
+				if (WorldSelectDisplay.getWorldNames().size() > 0) {
+					Game.exitDisplay();
+				} else {
+					Game.exitDisplay();
+					Game.exitDisplay();
+					Game.setDisplay(new WorldGenDisplay());
+				}
+
+				return true;
+			}));
+
+			Game.setDisplay(new PopupDisplay(new PopupDisplay.PopupConfig(null, callbacks, 0), entries.toArray(new ListEntry[0])));
+		} else if (input.getKey("SHIFT-D").clicked) {
+			ArrayList<ListEntry> entries = new ArrayList<>();
+			entries.addAll(Arrays.asList(StringEntry.useLines(Color.RED, Localization.getLocalized("minicraft.displays.world_select.popups.display.delete",
+				Color.toStringCode(Color.tint(Color.RED, 1, true)), worldNames.get(menus[0].getSelection()),
+				Color.RED_CODE))
+			));
+
+			entries.addAll(Arrays.asList(StringEntry.useLines(Color.WHITE, "",
+				Localization.getLocalized("minicraft.displays.world_select.popups.display.confirm", Game.input.getMapping("select")),
+				Localization.getLocalized("minicraft.displays.world_select.popups.display.cancel", Game.input.getMapping("exit"))
+			)));
+
+			ArrayList<PopupDisplay.PopupActionCallback> callbacks = new ArrayList<>();
+			callbacks.add(new PopupDisplay.PopupActionCallback("select", popup -> {
+				// The location of the world folder on the disk.
+				File world = new File(worldsDir + worldNames.get(menus[0].getSelection()));
+
+				// Do the action.
+				Logging.GAMEHANDLER.debug("Deleting world: " + world);
+				File[] list = world.listFiles();
+				for (File file : list) {
+					file.delete();
+				}
+				world.delete();
+
+				Sound.play("confirm");
+				updateWorlds();
+				updateEntries();
+				if (WorldSelectDisplay.getWorldNames().size() > 0) {
+					Game.exitDisplay();
+					if (menus[0].getSelection() >= worldNames.size()) {
+						menus[0].setSelection(worldNames.size() - 1);
+					}
+				} else {
+					Game.exitDisplay();
+					Game.exitDisplay();
+					Game.setDisplay(new WorldGenDisplay());
+				}
+
+				return true;
+			}));
+
+			Game.setDisplay(new PopupDisplay(new PopupDisplay.PopupConfig(null, callbacks, 0), entries.toArray(new ListEntry[0])));
 		}
 	}
-	
+
 	@Override
 	public void render(Screen screen) {
 		super.render(screen);
-		
+
 		int sel = menus[0].getSelection();
 		if (sel >= 0 && sel < worldVersions.size()) {
 			Version version = worldVersions.get(sel);
 			int col = Color.WHITE;
 			if (version.compareTo(Game.VERSION) > 0) {
 				col = Color.RED;
-				Font.drawCentered(Localization.getLocalized("Higher version, cannot load world!"), screen, Font.textHeight() * 5, col);
+				Font.drawCentered(Localization.getLocalized("minicraft.displays.world_select.display.world_too_new"), screen, Font.textHeight() * 5, col);
 			}
-			Font.drawCentered(Localization.getLocalized("World Version:") + " " + (version.compareTo(new Version("1.9.2")) <= 0 ? "~" : "") + version, screen, Font.textHeight() * 7/2, col);
-		}
-		
-		Font.drawCentered(Game.input.getMapping("select") + Localization.getLocalized(" to confirm"), screen, Screen.h - 60, Color.GRAY);
-		Font.drawCentered(Game.input.getMapping("exit") + Localization.getLocalized(" to return"), screen, Screen.h - 40, Color.GRAY);
-
-		int y = Screen.h - Font.textHeight() * Action.values().length;
-		for (Action a : Action.values()) {
-			Font.drawCentered(a.key + Localization.getLocalized(" to " + a), screen, y, a.color);
-			y += Font.textHeight();
+			Font.drawCentered(Localization.getLocalized("minicraft.displays.world_select.display.world_version", (version.compareTo(new Version("1.9.2")) <= 0 ? "~" : "") + version), screen, Font.textHeight() * 7/2, col);
 		}
 
-		Font.drawCentered(Localization.getLocalized("Select World"), screen, 0, Color.WHITE);
+		Font.drawCentered(Localization.getLocalized("minicraft.displays.world_select.display.help.0", Game.input.getMapping("select")), screen, Screen.h - 60, Color.GRAY);
+		Font.drawCentered(Localization.getLocalized("minicraft.displays.world_select.display.help.1", Game.input.getMapping("exit")), screen, Screen.h - 40, Color.GRAY);
+
+		Font.drawCentered(Localization.getLocalized("minicraft.displays.world_select.display.help.2"), screen, Screen.h - 24, Color.BLUE);
+		Font.drawCentered(Localization.getLocalized("minicraft.displays.world_select.display.help.3"), screen, Screen.h - 16, Color.GREEN);
+		Font.drawCentered(Localization.getLocalized("minicraft.displays.world_select.display.help.4"), screen, Screen.h - 8, Color.RED);
+
+		Font.drawCentered(Localization.getLocalized("minicraft.displays.world_select.select_world"), screen, 0, Color.WHITE);
 	}
 
 	public static void updateWorlds() {
-		Logger.debug("Updating worlds list.");
+		Logging.GAMEHANDLER.debug("Updating worlds list.");
 
 		// Get folder containing the worlds and load them.
 		File worldSavesFolder = new File(worldsDir);
 
 		// Try to create the saves folder if it doesn't exist.
 		if (worldSavesFolder.mkdirs()) {
-			Logger.trace("World save folder created.");
+			Logging.GAMEHANDLER.trace("World save folder created.");
 		}
 
 		// Get all the files (worlds) in the folder.
 		File[] worlds = worldSavesFolder.listFiles();
 
 		if (worlds == null) {
-			Logger.error("Game location file folder is null, somehow...");
+			Logging.GAMEHANDLER.error("Game location file folder is null, somehow...");
 			return;
 		}
 
@@ -135,7 +269,7 @@ public class WorldSelectDisplay extends Display {
 
 		// Check if there are no files in folder.
 		if (worlds.length == 0) {
-			Logger.debug("No worlds in folder. Won't bother loading.");
+			Logging.GAMEHANDLER.debug("No worlds in folder. Won't bother loading.");
 			return;
 		}
 

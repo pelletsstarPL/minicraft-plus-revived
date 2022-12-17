@@ -1,13 +1,6 @@
 package minicraft.screen;
 
-import java.time.LocalDateTime;
-import java.time.Month;
-import java.util.Random;
-
-import minicraft.util.BookData;
-
 import minicraft.core.Game;
-import minicraft.network.Network;
 import minicraft.core.Renderer;
 import minicraft.core.VersionInfo;
 import minicraft.core.World;
@@ -15,13 +8,21 @@ import minicraft.core.io.InputHandler;
 import minicraft.core.io.Localization;
 import minicraft.gfx.Color;
 import minicraft.gfx.Font;
+import minicraft.gfx.MinicraftImage;
 import minicraft.gfx.Point;
 import minicraft.gfx.Screen;
+import minicraft.gfx.SpriteLinker.SpriteType;
 import minicraft.level.Level;
+import minicraft.network.Network;
 import minicraft.screen.entry.BlankEntry;
 import minicraft.screen.entry.LinkEntry;
 import minicraft.screen.entry.SelectEntry;
 import minicraft.screen.entry.StringEntry;
+import minicraft.util.BookData;
+
+import java.time.LocalDateTime;
+import java.time.Month;
+import java.util.Random;
 
 public class TitleDisplay extends Display {
 	private static final Random random = new Random();
@@ -33,29 +34,29 @@ public class TitleDisplay extends Display {
 	public TitleDisplay() {
 
 		super(true, false, new Menu.Builder(false, 2, RelPos.CENTER,
-			new StringEntry("Checking for updates...", Color.BLUE),
+			new StringEntry("minicraft.displays.title.display.checking", Color.BLUE),
 			new BlankEntry(),
-			new SelectEntry("Play", () -> {
+			new SelectEntry("minicraft.displays.title.play", () -> {
 				if (WorldSelectDisplay.getWorldNames().size() > 0)
 					Game.setDisplay(new Display(true, new Menu.Builder(false, 2, RelPos.CENTER,
-						new SelectEntry("Load World", () -> Game.setDisplay(new WorldSelectDisplay())),
-						new SelectEntry("New World", () -> Game.setDisplay(new WorldGenDisplay()))
+						new SelectEntry("minicraft.displays.title.play.load_world", () -> Game.setDisplay(new WorldSelectDisplay())),
+						new SelectEntry("minicraft.displays.title.play.new_world", () -> Game.setDisplay(new WorldGenDisplay()))
 					).createMenu()));
 				else Game.setDisplay(new WorldGenDisplay());
 			}),
-			new SelectEntry("Options", () -> Game.setDisplay(new OptionsMainMenuDisplay())),
-            new SelectEntry("minicraft.display.skin", () -> Game.setDisplay(new SkinDisplay())),
-			new SelectEntry("minicraft.display.achievement", () -> Game.setDisplay(new AchievementsDisplay())),
-			new SelectEntry("Help", () ->
+			new SelectEntry("minicraft.display.options_display", () -> Game.setDisplay(new OptionsMainMenuDisplay())),
+            new SelectEntry("minicraft.displays.skin", () -> Game.setDisplay(new SkinDisplay())),
+			new SelectEntry("minicraft.displays.achievements", () -> Game.setDisplay(new AchievementsDisplay())),
+			new SelectEntry("minicraft.displays.title.help", () ->
 				Game.setDisplay(new Display(true, new Menu.Builder(false, 1, RelPos.CENTER,
 					new BlankEntry(),
-					new SelectEntry("Instructions", () -> Game.setDisplay(new BookDisplay(BookData.instructions))),
-					new SelectEntry("Storyline Guide", () -> Game.setDisplay(new BookDisplay(BookData.storylineGuide))),
-					new SelectEntry("About", () -> Game.setDisplay(new BookDisplay(BookData.about))),
-					new SelectEntry("Credits", () -> Game.setDisplay(new BookDisplay(BookData.credits)))
-				).setTitle("Help").createMenu()))
+					new SelectEntry("minicraft.displays.title.help.instructions", () -> Game.setDisplay(new BookDisplay(BookData.instructions.collect()))),
+					new SelectEntry("minicraft.displays.title.help.storyline_guide", () -> Game.setDisplay(new BookDisplay(BookData.storylineGuide.collect()))),
+					new SelectEntry("minicraft.displays.title.help.about", () -> Game.setDisplay(new BookDisplay(BookData.about.collect()))),
+					new SelectEntry("minicraft.displays.title.help.credits", () -> Game.setDisplay(new BookDisplay(BookData.credits.collect())))
+				).setTitle("minicraft.displays.title.help").createMenu()))
 			),
-			new SelectEntry("Quit", Game::quit)
+			new SelectEntry("minicraft.displays.title.quit", Game::quit)
 			)
 			.setPositioning(new Point(Screen.w/2, Screen.h*3/5), RelPos.CENTER)
 			.createMenu()
@@ -93,13 +94,13 @@ public class TitleDisplay extends Display {
 		}
 		else {
 			if (latestVersion.version.compareTo(Game.VERSION, true) > 0) {
-				menus[0].updateEntry(0, new StringEntry(Localization.getLocalized("New: ") + latestVersion.releaseName, Color.GREEN));
-				menus[0].updateEntry(1, new LinkEntry(Color.CYAN, "--Select here to Download--", latestVersion.releaseUrl, "Direct link to latest version: " + latestVersion.releaseUrl));
+				menus[0].updateEntry(0, new StringEntry(Localization.getLocalized("minicraft.displays.title.display.new_version", latestVersion.releaseName), Color.GREEN));
+				menus[0].updateEntry(1, new LinkEntry(Color.CYAN, Localization.getLocalized("minicraft.displays.title.select_to_download"), latestVersion.releaseUrl, Localization.getLocalized("minicraft.displays.title.link_to_version", latestVersion.releaseUrl)));
+			} else if (latestVersion.releaseName.length() > 0) {
+				menus[0].updateEntry(0, new StringEntry("minicraft.displays.title.display.latest_already", Color.DARK_GRAY, true));
+			} else {
+				menus[0].updateEntry(0, new StringEntry("minicraft.displays.title.display.cannot_check", Color.RED, true));
 			}
-			else if (latestVersion.releaseName.length() > 0)
-				menus[0].updateEntry(0, new StringEntry("You have the latest version.", Color.DARK_GRAY, true));
-			else
-				menus[0].updateEntry(0, new StringEntry("Could not check for updates.", Color.RED, true));
 		}
 	}
 
@@ -114,14 +115,15 @@ public class TitleDisplay extends Display {
 	public void render(Screen screen) {
 		super.render(screen);
 
-		int h = 2; // Height of squares (on the spritesheet)
-		int w = 15; // Width of squares (on the spritesheet)
-		int xo = (Screen.w - w * 8) / 2; // X location of the title
-		int yo = 18; // Y location of the title
+		MinicraftImage sheet = Renderer.spriteLinker.getSheet(SpriteType.Gui, "title");
+		int h = sheet.height / 8; // Height of squares (on the spritesheet)
+		int w = sheet.width / 8; // Width of squares (on the spritesheet)
+		int xo = (Screen.w - sheet.width) / 2; // X location of the title
+		int yo = 26 - sheet.height / 2; // Y location of the title
 
 		for (int y = 0; y < h; y++) {
 			for (int x = 0; x < w; x++) {
-				screen.render(xo + x * 8, yo + y * 8, x + y * 32, 0, 3);
+				screen.render(xo + x * 8, yo + y * 8, x, y, 0, sheet);
 			}
 		}
 
@@ -143,12 +145,12 @@ public class TitleDisplay extends Display {
 
 		Font.drawCentered(splashes[rand], screen, (Screen.h / 2) - 44, splashColor);
 
-		Font.draw("Version " + Game.VERSION, screen, 1, 1, Color.get(1, 51));
+		Font.draw(Localization.getLocalized("minicraft.displays.title.display.version", Game.VERSION), screen, 1, 1, Color.get(1, 51));
 
 
-		String upString = "(" + Game.input.getMapping("cursor-up") + ", " + Game.input.getMapping("cursor-down") + Localization.getLocalized(" to select") + ")";
-		String selectString = "(" + Game.input.getMapping("select") + Localization.getLocalized(" to accept") +")";
-		String exitString = "(" + Game.input.getMapping("exit") + Localization.getLocalized(" to return") +")";
+		String upString = Localization.getLocalized("minicraft.displays.title.display.help.0", Game.input.getMapping("cursor-up"), Game.input.getMapping("cursor-down"));
+		String selectString = Localization.getLocalized("minicraft.displays.title.display.help.1", Game.input.getMapping("select"));
+		String exitString = Localization.getLocalized("minicraft.displays.title.display.help.2", Game.input.getMapping("exit"));
 
 		Font.drawCentered(upString, screen, Screen.h - 30, Color.DARK_GRAY);
 		Font.drawCentered(selectString, screen, Screen.h - 20, Color.DARK_GRAY);

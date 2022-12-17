@@ -1,13 +1,9 @@
 package minicraft.core;
 
-import java.awt.GraphicsDevice;
-import java.awt.GraphicsEnvironment;
-
 import minicraft.core.io.Localization;
 import minicraft.core.io.Settings;
 import minicraft.entity.furniture.Bed;
 import minicraft.entity.mob.Player;
-import minicraft.item.Items;
 import minicraft.level.Level;
 import minicraft.level.tile.Tile;
 import minicraft.level.tile.Tiles;
@@ -15,9 +11,10 @@ import minicraft.saveload.Save;
 import minicraft.screen.EndGameDisplay;
 import minicraft.screen.LevelTransitionDisplay;
 import minicraft.screen.PlayerDeathDisplay;
-import minicraft.screen.QuestsDisplay;
 import minicraft.screen.WorldSelectDisplay;
-import org.tinylog.Logger;
+import minicraft.util.Logging;
+
+import java.awt.*;
 
 public class Updater extends Game {
 	private Updater() {}
@@ -46,12 +43,14 @@ public class Updater extends Game {
 
 	// AUTOSAVE AND NOTIFICATIONS
 
+	public static boolean updateNoteTick = false;
 	public static int notetick = 0; // "note"= notifications.
 
 	private static final int astime = 7200; // tands for Auto-Save Time (interval)
 	public static int asTick = 0; // The time interval between autosaves.
 	public static boolean saving = false; // If the game is performing a save.
 	public static int savecooldown; // Prevents saving many times too fast, I think.
+	public static int screenshot = 0; // Counter for screenshot queries.
 
 	public enum Time {
 		Morning (0),
@@ -90,17 +89,21 @@ public class Updater extends Game {
 	public static void tick() {
 
 		// Quick Level change: move the player for -1, or 1 levels
-        	if (isMode("creative") && input.getKey("SHIFT-S").clicked ) {
-        		Game.setDisplay(new LevelTransitionDisplay(-1));
+		if (isMode("minicraft.settings.mode.creative") && input.getKey("SHIFT-S").clicked ) {
+			Game.setDisplay(new LevelTransitionDisplay(-1));
 
-        	} else if (isMode("creative") && input.getKey("SHIFT-W").clicked ){
-        		Game.setDisplay(new LevelTransitionDisplay(1));
+		} else if (isMode("minicraft.settings.mode.creative") && input.getKey("SHIFT-W").clicked ){
+			Game.setDisplay(new LevelTransitionDisplay(1));
 
-        	}
+		}
 
 		if (input.getKey("FULLSCREEN").clicked) {
 			Updater.FULLSCREEN = !Updater.FULLSCREEN;
 			Updater.updateFullscreen();
+		}
+
+		if (input.getKey("screenshot").clicked) {
+			screenshot++;
 		}
 
 		if (newDisplay != display) {
@@ -120,12 +123,12 @@ public class Updater extends Game {
 				gamespeed = 20;
 			}
 			if (tickCount > sleepEndTime) {
-				Logger.trace("Passing midnight in bed.");
+				Logging.WORLD.trace("Passing midnight in bed.");
 				pastDay1 = true;
 				tickCount = 0;
 			}
 			if (tickCount <= sleepStartTime && tickCount >= sleepEndTime) { // It has reached morning.
-				Logger.trace("Reached morning, getting out of bed.");
+				Logging.WORLD.trace("Reached morning, getting out of bed.");
 				gamespeed = 1;
 				Bed.restorePlayers();
 			}
@@ -148,14 +151,16 @@ public class Updater extends Game {
 
 		// SCORE MODE ONLY
 
-		if (isMode("score") && (!paused && !gameOver)) {
+		if (isMode("minicraft.settings.mode.score") && (!paused && !gameOver)) {
 			if (scoreTime <= 0) { // GAME OVER
 				gameOver = true;
-				setDisplay(new EndGameDisplay(player));
+				setDisplay(new EndGameDisplay());
 			}
 
 			scoreTime--;
 		}
+
+		if (updateNoteTick) notetick++;
 
 		// This is the general action statement thing! Regulates menus, mostly.
 		if (!Renderer.canvas.hasFocus()) {
@@ -204,7 +209,7 @@ public class Updater extends Game {
 
 					if (input.getKey("ctrl-p").clicked) {
 						// Print all players on all levels, and their coordinates.
-						System.out.println("Printing players on all levels.");
+						Logging.WORLD.info("Printing players on all levels.");
 						for (Level value : levels) {
 							if (value == null) continue;
 							value.printEntityLocs(Player.class);
@@ -222,13 +227,12 @@ public class Updater extends Game {
 
 					String prevMode = (String)Settings.get("mode");
 					if (input.getKey("creative").clicked) {
-						Settings.set("mode", "creative");
-						Items.fillCreativeInv(player.getInventory(), false);
+						Settings.set("mode", "minicraft.settings.mode.creative");
 					}
-					if (input.getKey("survival").clicked) Settings.set("mode", "survival");
-					if (input.getKey("shift-t").clicked) Settings.set("mode", "score");
+					if (input.getKey("survival").clicked) Settings.set("mode", "minicraft.settings.mode.survival");
+					if (input.getKey("shift-t").clicked) Settings.set("mode", "minicraft.settings.mode.score");
 
-					if (isMode("score") && input.getKey("ctrl-t").clicked) {
+					if (isMode("minicraft.settings.mode.score") && input.getKey("ctrl-t").clicked) {
 						scoreTime = normSpeed * 5; // 5 seconds
 					}
 
@@ -244,11 +248,6 @@ public class Updater extends Game {
 						if (gamespeed > 1) gamespeed--;
 						else if (normSpeed*gamespeed > 5) gamespeed /= 2;
 					}
-
-
-					// Client-only cheats, since they are player-specific.
-					if (input.getKey("shift-g").clicked) // This should not be needed, since the inventory should not be altered.
-						Items.fillCreativeInv(player.getInventory());
 
 					if (input.getKey("ctrl-h").clicked) player.health--;
 					if (input.getKey("ctrl-b").clicked) player.hunger--;
@@ -294,7 +293,7 @@ public class Updater extends Game {
 		if (t > 0 && t < times.length)
 			changeTimeOfDay(times[t]); // It just references the other one.
 		else
-			System.out.println("Time " + t + " does not exist.");
+			Logging.WORLD.info("Time " + t + " does not exist.");
 	}
 
 	public static Time getTime() {

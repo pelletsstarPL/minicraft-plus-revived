@@ -1,6 +1,7 @@
 package minicraft.saveload;
 
 import minicraft.core.Game;
+import minicraft.core.Renderer;
 import minicraft.core.Updater;
 import minicraft.core.World;
 import minicraft.core.io.Localization;
@@ -12,21 +13,22 @@ import minicraft.entity.particle.FireParticle;
 import minicraft.entity.particle.SmashParticle;
 import minicraft.entity.particle.TextParticle;
 import minicraft.gfx.Color;
+import minicraft.gfx.SpriteLinker.SpriteType;
 import minicraft.item.*;
 import minicraft.level.Level;
 import minicraft.level.tile.Tiles;
 import minicraft.network.Network;
 import minicraft.screen.*;
+import minicraft.util.Logging;
+
 import org.jetbrains.annotations.Nullable;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.tinylog.Logger;
 
 import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 
 public class Load {
@@ -40,6 +42,8 @@ public class Load {
 	private ArrayList<String> extradata; // These two are changed when loading a new file. (see loadFromFile())
 
 	private Version worldVer;
+
+	private DeathChest deathChest;
 
 	{
 		worldVer = null;
@@ -74,8 +78,11 @@ public class Load {
 			loadEntities("Entities");
 			loadInventory("Inventory", Game.player.getInventory());
 			loadPlayer("Player", Game.player);
-			if (Game.isMode("creative"))
-				Items.fillCreativeInv(Game.player.getInventory(), false);
+
+			if (deathChest != null && deathChest.getInventory().invSize() > 0) {
+				Game.player.getLevel().add(deathChest, Game.player.x, Game.player.y);
+				Logging.SAVELOAD.debug("Added DeathChest which contains exceed items.");
+			}
 		}
 	}
 
@@ -98,14 +105,15 @@ public class Load {
 		// Check if Preferences.miniplussave exists. (old version)
 		} else if (new File(location + "Preferences" + extension).exists()) {
 			loadPrefsOld("Preferences");
-			Logger.info("Upgrading preferences to JSON.");
+			Logging.SAVELOAD.info("Upgrading preferences to JSON.");
 			resave = true;
 
 		// No preferences file found.
 		} else {
-			Logger.warn("No preferences found, creating new file.");
+			Logging.SAVELOAD.warn("No preferences found, creating new file.");
 			resave = true;
 		}
+
 		// Load unlocks. (new version)
 		File testFileOld = new File(location + "unlocks" + extension);
 		File testFile = new File(location + "Unlocks" + extension);
@@ -116,16 +124,16 @@ public class Load {
 				if (testFileOld.renameTo(testFile)) {
 					new LegacyLoad(testFile);
 				} else {
-					Logger.info("Failed to rename unlocks to Unlocks; loading old version.");
+					Logging.SAVELOAD.info("Failed to rename unlocks to Unlocks; loading old version.");
 					new LegacyLoad(testFileOld);
 				}
 			}
 
 			loadUnlocksOld("Unlocks");
 			resave = true;
-			Logger.info("Upgrading unlocks to JSON.");
+			Logging.SAVELOAD.info("Upgrading unlocks to JSON.");
 		} else {
-			Logger.warn("No unlocks found, creating new file.");
+			Logging.SAVELOAD.warn("No unlocks found, creating new file.");
 			resave = true;
 		}
 
@@ -194,6 +202,12 @@ public class Load {
 		loadFromFile(location + filename + extension);
 
 		worldVer = new Version(data.remove(0)); // Gets the world version
+
+		if (worldVer.compareTo(new Version("2.2.0-dev1")) >= 0)
+			World.setWorldSeed(Long.parseLong(data.remove(0)));
+		else
+			World.setWorldSeed(0);
+
 		if (worldVer.compareTo(new Version("2.0.4-dev8")) >= 0)
 			loadMode(data.remove(0));
 
@@ -217,9 +231,14 @@ public class Load {
 		// Check if the AirWizard was beaten in versions prior to 2.1.0
 		if (worldVer.compareTo(new Version("2.1.0-dev2")) < 0) {
 			if (AirWizard.beaten) {
-				Logger.debug("AirWizard was beaten in an old version, giving achievement...");
+				Logging.SAVELOAD.debug("AirWizard was beaten in an old version, giving achievement...");
 				AchievementsDisplay.setAchievement("minicraft.achievement.airwizard", true);
 			}
+		}
+
+		if (worldVer.compareTo(new Version("2.2.0-dev1")) >= 0) {
+			Settings.set("quests", Boolean.parseBoolean(data.remove(0)));
+			Settings.set("tutorials", Boolean.parseBoolean(data.remove(0)));
 		}
 	}
 
@@ -259,8 +278,7 @@ public class Load {
 		if (prefVer.compareTo(new Version("2.0.4-dev2")) >= 0)
 			Settings.set("fps", Integer.parseInt(data.remove(0)));
 
-		if (prefVer.compareTo(new Version("2.0.7-dev5")) >= 0)
-			SkinDisplay.setSelectedSkinIndex(Integer.parseInt(data.remove(0)));
+		SkinDisplay.releaseSkins();
 
 		// Get legacy language and convert it into the current format.
 		if (prefVer.compareTo(new Version("2.0.3-dev1")) >= 0) {
@@ -340,18 +358,17 @@ public class Load {
 		// Settings
 		Settings.set("sound", json.getBoolean("sound"));
 		Settings.set("autosave", json.getBoolean("autosave"));
-		Settings.set("diff", json.has("diff") ? json.getString("diff") : "Normal");
 		Settings.set("fps", json.getInt("fps"));
+		Settings.set("showquests", json.optBoolean("showquests", true));
 
 		if (json.has("lang")) {
 			String lang = json.getString("lang");
 			Settings.set("language", lang);
 			Localization.changeLanguage(lang);
-		} else {
-			Localization.loadLanguage();
 		}
 
-		SkinDisplay.setSelectedSkinIndex(json.getInt("skinIdx"));
+		SkinDisplay.setSelectedSkin(json.optString("skin", "minicraft.skin.paul"));
+		SkinDisplay.releaseSkins();
 
 		// Load keymap
 		JSONArray keyData = json.getJSONArray("keymap");
@@ -365,8 +382,18 @@ public class Load {
 			Game.input.setKey(map[0], map[1]);
 		}
 
-		if (json.has("resourcePack"))
-			new ResourcePackDisplay().setLoadedPack(json.getString("resourcePack"));
+		JSONArray packsJSON = json.optJSONArray("resourcePacks");
+		if (packsJSON != null) {
+			String[] packs = new String[packsJSON.length()];
+			for (int i = 0; i < packs.length; i++) {
+				packs[i] = packsJSON.getString(i);
+			}
+
+			ResourcePackDisplay.loadResourcePacks(packs);
+			ResourcePackDisplay.reloadResources();
+		}
+
+		ResourcePackDisplay.releaseUnloadedPacks();
 	}
 
 	private void loadUnlocksOld(String filename) {
@@ -424,7 +451,7 @@ public class Load {
 						if (Tiles.oldids.get(tileID) != null)
 							tilename = Tiles.oldids.get(tileID);
 						else {
-							Logger.warn("Tile list doesn't contain tile " + tileID);
+							Logging.SAVELOAD.warn("Tile list doesn't contain tile " + tileID);
 							tilename = "grass";
 						}
 					}
@@ -495,42 +522,50 @@ public class Load {
 			}
 		}
 
-		if (new File(location+"Quests.json").exists()) {
-			try {
-				JSONObject questsObj = new JSONObject(loadFromFile(location + "Quests.json", true));
-				JSONArray unlockedQuests = questsObj.getJSONArray("unlocked");
-				JSONArray doneQuests = questsObj.getJSONArray("done");
-				JSONObject questData = questsObj.getJSONObject("data");
+		if ((boolean) Settings.get("quests") || (boolean) Settings.get("tutorials")) {
+			if (new File(location+"Quests.json").exists()) {
+				try {
+					JSONObject questsObj = new JSONObject(loadFromFile(location + "Quests.json", true));
+					JSONArray unlockedQuests = questsObj.getJSONArray("unlocked");
+					JSONArray doneQuests = questsObj.getJSONArray("done");
+					JSONObject questData = questsObj.getJSONObject("data");
+					JSONObject lockedRecipes = questsObj.getJSONObject("lockedRecipes");
 
-				Settings.setIdx("tutorials", questsObj.getInt("tutorials"));
+					ArrayList<String> unlocked = new ArrayList<>();
+					ArrayList<String> done = new ArrayList<>();
+					ArrayList<Recipe> recipeLocks = new ArrayList<>();
 
-				ArrayList<String> unlocked = new ArrayList<>();
-				ArrayList<String> done = new ArrayList<>();
-				HashMap<String, String> questStatus = new HashMap<>();
+					for (int i = 0; i < unlockedQuests.length(); i++) {
+						unlocked.add(unlockedQuests.getString(i));
+					}
 
-				for (int i = 0; i < unlockedQuests.length(); i++) {
-					unlocked.add(unlockedQuests.getString(i));
+					for (int i = 0; i < doneQuests.length(); i++) {
+						done.add(doneQuests.getString(i));
+					}
+
+					for (String i : lockedRecipes.keySet()) {
+						JSONArray costsJson = lockedRecipes.getJSONArray(i);
+						String[] costs = new String[costsJson.length()];
+						for (int j = 0; j < costsJson.length(); j++) {
+							costs[j] = costsJson.getString(j);
+						}
+
+						recipeLocks.add(new Recipe(i, costs));
+					}
+
+					QuestsDisplay.loadGameQuests(unlocked, done, questData);
+					CraftingDisplay.loadLockedRecipes(recipeLocks);
+
+				} catch (IOException e) {
+					e.printStackTrace();
+					Logging.SAVELOAD.error("Unable to load Quests.json, loading default quests instead.");
+					QuestsDisplay.resetGameQuests();
 				}
 
-				for (int i = 0; i < doneQuests.length(); i++) {
-					done.add(doneQuests.getString(i));
-				}
-
-				for (String i : questData.keySet()) {
-					questStatus.put(i, questData.getString(i));
-				}
-
-				QuestsDisplay.loadGameQuests(unlocked, done, questStatus);
-
-			} catch (IOException e) {
-				e.printStackTrace();
-				Logger.error("Unable to load Quests.json, loading default quests instead.");
+			} else {
+				Logging.SAVELOAD.debug("Quests.json not found, loading default quests instead.");
 				QuestsDisplay.resetGameQuests();
 			}
-
-		} else {
-			Logger.debug("Quests.json not found, loading default quests instead.");
-			QuestsDisplay.resetGameQuests();
 		}
 	}
 
@@ -575,7 +610,7 @@ public class Load {
 		if(level != null)
 			level.add(player);
 		else
-			Logger.trace("Game level to add player {} to is null.", player);
+			Logging.SAVELOAD.trace("Game level to add player {} to is null.", player);
 
 		if (worldVer.compareTo(new Version("2.0.4-dev8")) < 0) {
 			String modedata = data.remove(0);
@@ -602,7 +637,7 @@ public class Load {
 				cols[i] = Integer.parseInt(color[i]) / 50;
 
 			String col = "" + cols[0] + cols[1] + cols[2];
-			System.out.println("Getting color as " + col);
+			Logging.SAVELOAD.debug("Getting color as " + col);
 			player.shirtColor = Integer.parseInt(col);
 		} else if (worldVer.compareTo(new Version("2.0.6-dev4")) < 0) {
 			String color = data.remove(0);
@@ -654,6 +689,7 @@ public class Load {
 	}
 
 	public void loadInventory(String filename, Inventory inventory) {
+		deathChest = new DeathChest();
 		loadFromFile(location + filename + extension);
 		loadInventory(inventory, data);
 	}
@@ -662,7 +698,7 @@ public class Load {
 
 		for (String item : data) {
 			if (item.length() == 0) {
-				Logger.error("loadInventory: Item in data list is \"\", skipping item");
+				Logging.SAVELOAD.error("loadInventory: Item in data list is \"\", skipping item");
 				continue;
 			}
 
@@ -682,16 +718,28 @@ public class Load {
 
 				if (newItem instanceof StackableItem) {
 					((StackableItem) newItem).count = count;
-					inventory.add(newItem);
-				} else inventory.add(newItem, count);
+					loadItem(inventory, newItem);
+				} else {
+					for (int i = 0; i < count; i++) loadItem(inventory, newItem);
+				}
 			} else {
-				inventory.add(Items.get(item));
+				loadItem(inventory, Items.get(item));
 			}
 		}
 	}
 
+	private void loadItem(Inventory inventory, Item item) {
+		int total = 1;
+		if (item instanceof StackableItem) total = ((StackableItem) item).count;
+		int loaded = inventory.add(item);
+
+		if (loaded < total) {
+			deathChest.getInventory().add(item.clone());
+		}
+	}
+
 	private void loadEntities(String filename) {
-		LoadingDisplay.setMessage("Entities");
+		LoadingDisplay.setMessage("minicraft.displays.loading.message.entities");
 		loadFromFile(location + filename + extension);
 
 		for (int i = 0; i < World.levels.length; i++) {
@@ -744,12 +792,12 @@ public class Load {
 			if (sparkOwner instanceof AirWizard)
 				newEntity = new Spark((AirWizard)sparkOwner, x, y);
 			else {
-				System.err.println("failed to load spark; owner id doesn't point to a correct entity");
+				Logging.SAVELOAD.error("Failed to load spark; owner id doesn't point to a correct entity");
 				return null;
 			}
 		} else {
 			int mobLvl = 1;
-			Class c = null;
+			Class<?> c = null;
 			if (!Crafter.names.contains(entityName)) {
 				try {
 					c = Class.forName("minicraft.entity.mob." + entityName);
@@ -771,7 +819,7 @@ public class Load {
 			Mob mob = (Mob)newEntity;
 			mob.health = Integer.parseInt(info.get(2));
 
-			Class c = null;
+			Class<?> c = null;
 			try {
 				c = Class.forName("minicraft.entity.mob." + entityName);
 			} catch (ClassNotFoundException e) {
@@ -783,7 +831,7 @@ public class Load {
 				enemyMob.lvl = Integer.parseInt(info.get(info.size()-2));
 
 				if (enemyMob.lvl == 0) {
-					if (Game.debug) System.out.println("Level 0 mob: " + entityName);
+					Logging.SAVELOAD.debug("Level 0 mob: " + entityName);
 					enemyMob.lvl = 1;
 				} else if (enemyMob.lvl > enemyMob.getMaxLevel()) {
 					enemyMob.lvl = enemyMob.getMaxLevel();
@@ -865,7 +913,7 @@ public class Load {
 
 		newEntity.eid = eid; // This will be -1 unless set earlier, so a new one will be generated when adding it to the level.
 		if (newEntity instanceof ItemEntity && eid == -1)
-			Logger.warn("Item entity was loaded with no eid");
+			Logging.SAVELOAD.warn("Item entity was loaded with no eid");
 
 		int curLevel = Integer.parseInt(info.get(info.size()-1));
 		if (World.levels[curLevel] != null) {
@@ -910,7 +958,7 @@ public class Load {
 			case "FireParticle": return new FireParticle(0, 0);
 			case "SmashParticle": return new SmashParticle(0, 0);
 			case "TextParticle": return new TextParticle("", 0, 0, 0);
-			default : Logger.error("LOAD ERROR: Unknown or outdated entity requested: " + string);
+			default : Logging.SAVELOAD.error("LOAD ERROR: Unknown or outdated entity requested: " + string);
 				return null;
 		}
 	}

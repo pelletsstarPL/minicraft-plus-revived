@@ -6,13 +6,13 @@ import minicraft.entity.Entity;
 import minicraft.entity.mob.AirWizard;
 import minicraft.entity.mob.Player;
 import minicraft.gfx.Screen;
-import minicraft.gfx.Sprite;
+import minicraft.gfx.SpriteAnimation;
 import minicraft.level.Level;
 
 public class InfiniteFallTile extends Tile {
 
 	protected InfiniteFallTile(String name) {
-		super(name, (Sprite)null);
+		super(name, (SpriteAnimation)null);
 	}
 
 	@Override
@@ -23,6 +23,6 @@ public class InfiniteFallTile extends Tile {
 
 	@Override
 	public boolean mayPass(Level level, int x, int y, Entity e) {
-		return e instanceof AirWizard || e instanceof Arrow || e instanceof Player && Game.isMode("creative");
+		return e instanceof AirWizard || e instanceof Arrow || e instanceof Player && Game.isMode("minicraft.settings.mode.creative");
 	}
 }

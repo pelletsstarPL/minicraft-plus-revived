@@ -14,6 +14,8 @@ import minicraft.entity.furniture.Tnt;
 import minicraft.entity.particle.Particle;
 import minicraft.entity.particle.TextParticle;
 import minicraft.gfx.*;
+import minicraft.gfx.SpriteLinker.LinkedSprite;
+import minicraft.gfx.SpriteLinker.SpriteType;
 import minicraft.item.*;
 import minicraft.level.Level;
 import minicraft.level.tile.Tile;
@@ -21,16 +23,15 @@ import minicraft.level.tile.Tiles;
 import minicraft.network.Analytics;
 import minicraft.saveload.Save;
 import minicraft.screen.*;
+import minicraft.util.Logging;
 import minicraft.util.Vector2;
 import org.jetbrains.annotations.Nullable;
-import org.tinylog.Logger;
 
 import java.util.HashMap;
 import java.util.List;
 
 public class Player extends Mob implements ItemHolder, ClientTickable {
 	protected InputHandler input;
-
 	private static final int playerHurtTime = 30;
 	public static final int INTERACT_DIST = 12;
 	private static final int ATTACK_DIST = 20;
@@ -52,8 +53,8 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 	public static final int maxHealth = maxStat, maxStamina = maxStat, maxHunger = maxStat;
 	public static final int maxArmor = 100;
 
-	public static MobSprite[][] sprites;
-	public static MobSprite[][] carrySprites;
+	public static LinkedSprite[][] sprites;
+	public static LinkedSprite[][] carrySprites;
 
 	private Inventory inventory;
 
@@ -87,6 +88,9 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 
 	public HashMap<PotionType, Integer> potioneffects; // The potion effects currently applied to the player
 	public boolean showpotioneffects; // Whether to display the current potion effects on screen
+	public boolean simpPotionEffects;
+	public boolean renderGUI;
+	public int questExpanding; // Lets the display keeps expanded.
 	private int cooldowninfo; // Prevents you from toggling the info pane on and off super fast.
 	private int regentick; // Counts time between each time the regen potion effect heals you.
 
@@ -97,49 +101,27 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 	public int fishingTicks = maxFishingTicks;
 	public int fishingLevel;
 
+	private LinkedSprite hudSheet;
+
 	// Note: the player's health & max health are inherited from Mob.java
 
 	public Player(@Nullable Player previousInstance, InputHandler input) {
-		super(sprites, Player.maxHealth);
+		super(null, Player.maxHealth);
 
 		x = 24;
 		y = 24;
 		this.input = input;
-		inventory = new Inventory() {
-
-			@Override
-			public void add(int idx, Item item) {
-				if (Game.isMode("creative")) {
-					if (count(item) > 0) return;
-					item = item.clone();
-					if (item instanceof StackableItem)
-						((StackableItem)item).count = 1;
-				}
-				super.add(idx, item);
-			}
-
-			@Override
-			public Item remove(int idx) {
-				if (Game.isMode("creative")) {
-					Item cur = get(idx);
-					if (cur instanceof StackableItem)
-						((StackableItem)cur).count = 1;
-					if (count(cur) == 1) {
-						super.remove(idx);
-						super.add(0, cur);
-						return cur.clone();
-					}
-				}
-				return super.remove(idx);
-			}
-		};
-
+		// Since this implementation will be deleted by Better Creative Mode Inventory might not implemented correctly
+		inventory = new Inventory();
 
 		potioneffects = new HashMap<>();
 		showpotioneffects = true;
+		simpPotionEffects = false;
+		renderGUI = true;
 
 		cooldowninfo = 0;
 		regentick = 0;
+		questExpanding = 0;
 
 		attackDir = dir;
 		armor = 0;
@@ -151,18 +133,17 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 		hungerStamCnt = maxHungerStams[Settings.getIdx("diff")];
 		stamHungerTicks = maxHungerTicks;
 
-		if (Game.isMode("creative"))
-			Items.fillCreativeInv(inventory);
-
 		if (previousInstance != null) {
 			spawnx = previousInstance.spawnx;
 			spawny = previousInstance.spawny;
 		}
 
+		hudSheet = new LinkedSprite(SpriteType.Gui, "hud");
+
 		updateSprites();
 	}
 
-	public int getMultiplier() { return Game.isMode("score") ? multiplier : 1; }
+	public int getMultiplier() { return Game.isMode("minicraft.settings.mode.score") ? multiplier : 1; }
 
 	void resetMultiplier() {
 		multiplier = 1;
@@ -170,7 +151,7 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 	}
 
 	public void addMultiplier(int value) {
-		if (!Game.isMode("score")) return;
+		if (!Game.isMode("minicraft.settings.mode.score")) return;
 		multiplier = Math.min(MAX_MULTIPLIER, multiplier+value);
 		multipliertime = Math.max(multipliertime, mtm - 5);
 	}
@@ -240,11 +221,24 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 			}
 		}
 
-		if(cooldowninfo > 0) cooldowninfo--;
+		if (cooldowninfo > 0) cooldowninfo--;
+		if (questExpanding > 0) questExpanding--;
 
-		if(input.getKey("potionEffects").clicked && cooldowninfo == 0) {
+		if (input.getKey("potionEffects").clicked && cooldowninfo == 0) {
 			cooldowninfo = 10;
 			showpotioneffects = !showpotioneffects;
+		}
+
+		if (input.getKey("simpPotionEffects").clicked) {
+			simpPotionEffects = !simpPotionEffects;
+		}
+
+		if (input.getKey("toggleHUD").clicked) {
+			renderGUI = !renderGUI;
+		}
+
+		if (input.getKey("expandQuestDisplay").clicked) {
+			questExpanding = 30;
 		}
 
 		Tile onTile = level.getTile(x >> 4, y >> 4); // Gets the current tile the player is on.
@@ -258,7 +252,7 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 			onStairDelay = 10; // Resets the delay, if on a stairs tile, but the delay is greater than 0. In other words, this prevents you from ever activating a level change on a stair tile, UNTIL you get off the tile for 10+ ticks.
 		} else if (onStairDelay > 0) onStairDelay--; // Decrements stairDelay if it's > 0, but not on stair tile... does the player get removed from the tile beforehand, or something?
 
-		if (onTile == Tiles.get("Infinite Fall") && !Game.isMode("creative")) {
+		if (onTile == Tiles.get("Infinite Fall") && !Game.isMode("minicraft.settings.mode.creative")) {
 			if (onFallDelay <= 0) {
 				World.scheduleLevelChange(-1);
 				onFallDelay = 40;
@@ -266,7 +260,7 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 			}
 		} else if (onFallDelay > 0) onFallDelay--;
 
-		if (Game.isMode("creative")) {
+		if (Game.isMode("minicraft.settings.mode.creative")) {
 			// Prevent stamina/hunger decay in creative mode.
 			stamina = maxStamina;
 			hunger = maxHunger;
@@ -287,7 +281,7 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 
 			// Recharge a bolt for each multiple of maxStaminaRecharge.
 			while (staminaRecharge > maxStaminaRecharge) {
-				   staminaRecharge -= maxStaminaRecharge;
+				staminaRecharge -= maxStaminaRecharge;
 				if (stamina < maxStamina) stamina++; // Recharge one stamina bolt per "charge".
 			}
 		}
@@ -370,10 +364,13 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 
 			// Move while we are not falling.
 			if (onFallDelay <= 0) {
+				// controlInput.buttonPressed is used because otherwise the player will move one even if held down.
 				if (input.getKey("move-up").down) vec.y--;
 				if (input.getKey("move-down").down) vec.y++;
 				if (input.getKey("move-left").down) vec.x--;
 				if (input.getKey("move-right").down) vec.x++;
+
+
 			}
 
 			// Executes if not saving; and... essentially halves speed if out of stamina.
@@ -403,7 +400,7 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 					// Drop one from stack
 					((StackableItem)activeItem).count--;
 					((StackableItem)drop).count = 1;
-				} else if (!Game.isMode("creative")) {
+				} else {
 					activeItem = null; // Remove it from the "inventory"
 				}
 
@@ -418,8 +415,20 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 			}
 
 			if (input.getKey("menu").clicked && activeItem != null) {
-				inventory.add(0, activeItem);
-				activeItem = null;
+				int returned = inventory.add(0, activeItem);
+				if (activeItem instanceof StackableItem) {
+					StackableItem stackable = (StackableItem)activeItem;
+					if (stackable.count > 0) {
+						getLevel().dropItem(x, y, stackable.clone());
+					}
+
+					activeItem = null;
+				} else if (returned > 0) {
+					activeItem = null;
+				} else {
+					getLevel().dropItem(x, y, activeItem);
+					activeItem = null;
+				}
 			}
 
 			if (Game.getDisplay() == null) {
@@ -428,17 +437,17 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 				if (input.getKey("pause").clicked)
 					Game.setDisplay(new PauseDisplay());
 				if (input.getKey("craft").clicked && !use())
-					Game.setDisplay(new CraftingDisplay(Recipes.craftRecipes, "Crafting", this, true));
+					Game.setDisplay(new CraftingDisplay(Recipes.craftRecipes, "minicraft.displays.crafting", this, true));
 
-				if (input.getKey("info").clicked) Game.setDisplay(new InfoDisplay());
+				if (input.getKey("info").down) Game.setDisplay(new InfoDisplay());
 
-				if (input.getKey("quicksave").clicked && !Updater.saving) {
+				if (input.getKey("quicksave").down && !Updater.saving) {
 					Updater.saving = true;
 					LoadingDisplay.setPercentage(0);
 					new Save(WorldSelectDisplay.getWorldName());
 				}
 				//debug feature:
-				if (Game.debug && input.getKey("shift-p").clicked) { // Remove all potion effects
+				if (Game.debug && input.getKey("shift-p").down) { // Remove all potion effects
 					for (PotionType potionType : potioneffects.keySet()) {
 						PotionItem.applyPotion(this, potionType, false);
 					}
@@ -467,9 +476,16 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 	 */
 	public void resolveHeldItem() {
 		if (!(activeItem instanceof PowerGloveItem)) { // If you are now holding something other than a power glove...
-			if (prevItem != null && !Game.isMode("creative")) // and you had a previous item that we should care about...
-				inventory.add(0, prevItem); // Then add that previous item to your inventory so it isn't lost.
-			// If something other than a power glove is being held, but the previous item is null, then nothing happens; nothing added to inventory, and current item remains as the new one.
+			if (prevItem != null) { // and you had a previous item that we should care about...
+				int returned = inventory.add(0, prevItem); // Then add that previous item to your inventory so it isn't lost.
+				if (prevItem instanceof StackableItem) {
+					if (((StackableItem)prevItem).count > 0) {
+						getLevel().dropItem(x, y, prevItem.clone());
+					}
+				} else if (returned == 0) {
+					getLevel().dropItem(x, y, prevItem);
+				}
+			} // If something other than a power glove is being held, but the previous item is null, then nothing happens; nothing added to inventory, and current item remains as the new one.
 		} else
 			activeItem = prevItem; // Otherwise, if you're holding a power glove, then the held item didn't change, so we can remove the power glove and make it what it was before.
 
@@ -495,7 +511,7 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 			attackDir = dir; // Make the attack direction equal the current direction
 			attackItem = activeItem; // Make attackItem equal activeItem
 			activeItem.interactOn(Tiles.get("rock"), level, 0, 0, this, attackDir);
-			if (!Game.isMode("creative") && activeItem.isDepleted()) {
+			if (activeItem.isDepleted()) {
 				activeItem = null;
 			}
 			return;
@@ -514,11 +530,11 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 				ToolItem tool = (ToolItem) activeItem;
 				if (tool.type == ToolType.Bow && tool.dur > 0 && inventory.count(Items.arrowItem) > 0) {
 
-					if (!Game.isMode("creative")) inventory.removeItem(Items.arrowItem);
+					inventory.removeItem(Items.arrowItem);
 					level.add(new Arrow(this, attackDir, tool.level));
 					attackTime = 10;
 
-					if (!Game.isMode("creative")) tool.dur--;
+					if (!Game.isMode("minicraft.settings.mode.creative")) tool.dur--;
 
 					AchievementsDisplay.setAchievement("minicraft.achievement.bow",true);
 
@@ -546,13 +562,13 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 					if (activeItem.interactOn(tile, level, t.x, t.y, this, attackDir)) {
 						done = true;
 
-					// Returns true if the target tile successfully interacts with the item.
+						// Returns true if the target tile successfully interacts with the item.
 					} else if (tile.interact(level, t.x, t.y, this, activeItem, attackDir)){
 						done = true;
 					}
 				}
 
-				if (!Game.isMode("creative") && activeItem.isDepleted()) {
+				if (activeItem.isDepleted()) {
 					// If the activeItem has 0 items left, then "destroy" it.
 					activeItem = null;
 				}
@@ -712,7 +728,7 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 	 */
 	public void updateSprites() {
 		// Get the current skin we are using as a MobSprite array.
-		MobSprite[][][] selectedSkin = SkinDisplay.getSkinAsMobSprite();
+		LinkedSprite[][][] selectedSkin = SkinDisplay.getSkinAsMobSprite();
 
 		// Assign the skin to the states.
 		sprites = selectedSkin[0];
@@ -721,8 +737,6 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 
 	@Override
 	public void render(Screen screen) {
-		MobSprite[][] spriteSet = activeItem instanceof FurnitureItem ? carrySprites : sprites;
-
 		/* Offset locations to start drawing the sprite relative to our position */
 		int xo = x - 8; // Horizontal
 		int yo = y - 11; // Vertical
@@ -734,23 +748,22 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 
 				// animation effect
 			    if (tickTime / 8 % 2 == 0) {
-			    	 screen.render(xo + 0, yo + 3, 5 + 2 * 32, 0, 3); // Render the water graphic
-			    	 screen.render(xo + 8, yo + 3, 5 + 2 * 32, 1, 3); // Render the mirrored water graphic to the right.
+			    	screen.render(xo + 0, yo + 3, 5, 0, 0, hudSheet.getSheet()); // Render the water graphic
+			    	screen.render(xo + 8, yo + 3, 5, 0, 1, hudSheet.getSheet()); // Render the mirrored water graphic to the right.
 			    } else {
-					screen.render(xo + 0, yo + 3, 5 + 3 * 32, 0, 3);
-					screen.render(xo + 8, yo + 3, 5 + 3 * 32, 1, 3);
+					screen.render(xo + 0, yo + 3, 5, 1, 0, hudSheet.getSheet());
+					screen.render(xo + 8, yo + 3, 5, 1, 1, hudSheet.getSheet());
 			    }
 
 			} else if (level.getTile(x / 16, y / 16) == Tiles.get("lava")) {
 
 			    if (tickTime / 8 % 2 == 0) {
-					screen.render(xo + 0, yo + 3, 6 + 2 * 32, 1, 3); // Render the lava graphic
-					screen.render(xo + 8, yo + 3, 6 + 2 * 32, 0, 3); // Render the mirrored lava graphic to the right.
+					screen.render(xo + 0, yo + 3, 6, 0, 1, hudSheet.getSheet()); // Render the lava graphic
+					screen.render(xo + 8, yo + 3, 6, 0, 0, hudSheet.getSheet()); // Render the mirrored lava graphic to the right.
 			    } else {
-					screen.render(xo + 0, yo + 3, 6 + 3 * 32, 1, 3);
-					screen.render(xo + 8, yo + 3, 6 + 3 * 32, 0, 3);
+					screen.render(xo + 0, yo + 3, 6, 1, 1, hudSheet.getSheet());
+					screen.render(xo + 8, yo + 3, 6, 1, 0, hudSheet.getSheet());
 			    }
-
 			}
 		}
 
@@ -758,7 +771,7 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 		if (activeItem instanceof TileItem) {
 			Point t = getInteractionTile();
 
-			screen.render(t.x * 16 + 4, t.y * 16 + 4, 3 + 4 * 32, 0, 3);
+			screen.render(t.x * 16 + 4, t.y * 16 + 4, 3, 2, 0, hudSheet.getSheet());
 		}
 
 		// Makes the player white if they have just gotten hurt
@@ -766,10 +779,12 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 			col = Color.WHITE; // Make the sprite white.
 		}
 
+		LinkedSprite[][] spriteSet = activeItem instanceof FurnitureItem ? carrySprites : sprites;
+
 		// Renders falling
-		MobSprite curSprite;
+		LinkedSprite curSprite;
 		if (onFallDelay > 0) {
-			// What this does is make falling look really cool
+			// This makes falling look really cool.
 			float spriteToUse = onFallDelay / 2f;
 			while (spriteToUse > spriteSet.length - 1) {
 				spriteToUse -= 4;
@@ -780,42 +795,46 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 		}
 
 		// Render each corner of the sprite
-		if (!isSwimming()) { // Don't render the bottom half if swimming.
-			curSprite.render(screen, xo, yo - 4 * onFallDelay, -1, shirtColor);
-		} else {
-			curSprite.renderRow(0, screen, xo, yo, -1, shirtColor);
+		if (isSwimming()) {
+			Sprite sprite = curSprite.getSprite();
+			screen.render(xo, yo, sprite.spritePixels[0][0], shirtColor);
+			screen.render(xo + 8, yo, sprite.spritePixels[0][1], shirtColor);
+		} else { // Don't render the bottom half if swimming.
+			screen.render(xo, yo - 4 * onFallDelay, curSprite.setColor(shirtColor));
 		}
 
 		// Renders slashes:
 		if (attackTime > 0) {
 			switch (attackDir) {
 				case UP:  // If currently attacking upwards...
-					screen.render(xo + 0, yo - 4, 3 + 2 * 32, 0, 3); // Render left half-slash
-					screen.render(xo + 8, yo - 4, 3 + 2 * 32, 1, 3); // Render right half-slash (mirror of left).
+					screen.render(xo + 0, yo - 4, 3, 0, 0, hudSheet.getSheet()); // Render left half-slash
+					screen.render(xo + 8, yo - 4, 3, 0, 1, hudSheet.getSheet()); // Render right half-slash (mirror of left).
 					if (attackItem != null && !(attackItem instanceof PowerGloveItem)) { // If the player had an item when they last attacked...
-						attackItem.sprite.render(screen, xo + 4, yo - 4, 1); // Then render the icon of the item, mirrored
+						screen.render(xo + 4, yo - 4, attackItem.sprite.getSprite(), 1, false); // Then render the icon of the item, mirrored
 					}
 					break;
 				case LEFT:  // Attacking to the left... (Same as above)
-					screen.render(xo - 4, yo, 4 + 2 * 32, 1, 3);
-					screen.render(xo - 4, yo + 8, 4 + 2 * 32, 3, 3);
+					screen.render(xo - 4, yo, 4, 0, 1, hudSheet.getSheet());
+					screen.render(xo - 4, yo + 8, 4, 0, 3, hudSheet.getSheet());
 					if (attackItem != null && !(attackItem instanceof PowerGloveItem)) {
-						attackItem.sprite.render(screen, xo - 4, yo + 4, 1);
+						screen.render(xo - 4, yo + 4, attackItem.sprite.getSprite(), 1, false);
 					}
 					break;
 				case RIGHT:  // Attacking to the right (Same as above)
-					screen.render(xo + 8 + 4, yo, 4 + 2 * 32, 0, 3);
-					screen.render(xo + 8 + 4, yo + 8, 4 + 2 * 32, 2, 3);
+					screen.render(xo + 8 + 4, yo, 4, 0, 0, hudSheet.getSheet());
+					screen.render(xo + 8 + 4, yo + 8, 4, 0, 2, hudSheet.getSheet());
 					if (attackItem != null && !(attackItem instanceof PowerGloveItem)) {
-						attackItem.sprite.render(screen, xo + 8 + 4, yo + 4);
+						screen.render(xo + 8 + 4, yo + 4, attackItem.sprite.getSprite());
 					}
 					break;
 				case DOWN:  // Attacking downwards (Same as above)
-					screen.render(xo + 0, yo + 8 + 4, 3 + 2 * 32, 2, 3);
-					screen.render(xo + 8, yo + 8 + 4, 3 + 2 * 32, 3, 3);
+					screen.render(xo + 0, yo + 8 + 4, 3, 0, 2, hudSheet.getSheet());
+					screen.render(xo + 8, yo + 8 + 4, 3, 0, 3, hudSheet.getSheet());
 					if (attackItem != null && !(attackItem instanceof PowerGloveItem)) {
-						attackItem.sprite.render(screen, xo + 4, yo + 8 + 4);
+						screen.render(xo + 4, yo + 8 + 4, attackItem.sprite.getSprite());
 					}
+					break;
+				case NONE:
 					break;
 			}
 		}
@@ -824,16 +843,16 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 		if (isFishing) {
 			switch (dir) {
 				case UP:
-					screen.render(xo + 4, yo - 4, fishingLevel + 11 * 32, 1);
+					screen.render(xo + 4, yo - 4, activeItem.sprite.getSprite(), 1, false);
 					break;
 				case LEFT:
-					screen.render(xo - 4, yo + 4, fishingLevel + 11 * 32, 1);
+					screen.render(xo - 4, yo + 4, activeItem.sprite.getSprite(), 1, false);
 					break;
 				case RIGHT:
-					screen.render(xo + 8 + 4, yo + 4, fishingLevel + 11 * 32, 0);
+					screen.render(xo + 8 + 4, yo + 4, activeItem.sprite.getSprite());
 					break;
 				case DOWN:
-					screen.render(xo + 4, yo + 8 + 4, fishingLevel + 11 * 32, 0);
+					screen.render(xo + 4, yo + 8 + 4, activeItem.sprite.getSprite());
 					break;
 				case NONE:
 					break;
@@ -851,17 +870,22 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 
 	/** What happens when the player interacts with a itemEntity */
 	public void pickupItem(ItemEntity itemEntity) {
-
-		Sound.pickup.play();
-
-		itemEntity.remove();
-		addScore(1);
-		if (Game.isMode("creative")) return; // We shall not bother the inventory on creative mode.
-
-		if (itemEntity.item instanceof StackableItem && ((StackableItem)itemEntity.item).stacksWith(activeItem)) // Picked up item equals the one in your hand
+		int picked = 0;
+		int total = 1;
+		if (itemEntity.item instanceof StackableItem && ((StackableItem)itemEntity.item).stacksWith(activeItem)) { // Picked up item equals the one in your hand
 			((StackableItem)activeItem).count += ((StackableItem)itemEntity.item).count;
-		else
-			inventory.add(itemEntity.item); // Add item to inventory
+			picked = ((StackableItem)itemEntity.item).count;
+		} else {
+			if (itemEntity.item instanceof StackableItem) total = ((StackableItem)itemEntity.item).count;
+			picked = inventory.add(itemEntity.item); // Add item to inventory
+		}
+
+		if (picked == total) {
+			Sound.play("pickup");
+
+			itemEntity.remove();
+			addScore(1);
+		}
 	}
 
 	// The player can swim.
@@ -919,14 +943,14 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 	 * Finds a location where the player can respawn in a given level.
 	 * @param level The level.
 	 */
-    public void respawn(Level level) {
-        if (!level.getTile(spawnx, spawny).maySpawn()) {
-            findStartPos(level); // If there's no bed to spawn from, and the stored coordinates don't point to a grass tile, then find a new point.
+	public void respawn(Level level) {
+		if (!level.getTile(spawnx, spawny).maySpawn()) {
+			findStartPos(level); // If there's no bed to spawn from, and the stored coordinates don't point to a grass tile, then find a new point.
 		}
 
-        // Move the player to the spawn point
-        this.x = spawnx * 16 + 8;
-        this.y = spawny * 16 + 8;
+		// Move the player to the spawn point
+		this.x = spawnx * 16 + 8;
+		this.y = spawny * 16 + 8;
 	}
 
 	/**
@@ -972,7 +996,7 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 		if (activeItem != null) dc.getInventory().add(activeItem);
 		if (curArmor != null) dc.getInventory().add(curArmor);
 
-		Sound.playerDeath.play();
+		Sound.play("death");
 
 		// Add the death chest to the world.
 		World.levels[Game.currentLevel].add(dc);
@@ -994,7 +1018,7 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 
 	@Override
 	protected void doHurt(int damage, Direction attackDir) {
-		if (Game.isMode("creative") || hurtTime > 0 || Bed.inBed(this)) return; // Can't get hurt in creative, hurt cooldown, or while someone is in bed
+		if (Game.isMode("minicraft.settings.mode.creative") || hurtTime > 0 || Bed.inBed(this)) return; // Can't get hurt in creative, hurt cooldown, or while someone is in bed
 
 		int healthDam = 0, armorDam = 0;
 		if (this == Game.player) {
@@ -1028,7 +1052,7 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 			if (this == Game.player) super.doHurt(healthDam, attackDir); // Sets knockback, and takes away health.
 		}
 
-		Sound.playerHurt.play();
+		Sound.play("playerhurt");
 		hurtTime = playerHurtTime;
 	}
 
@@ -1038,7 +1062,7 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 	 * @param attackDir The direction of attack.
 	 */
 	private void directHurt(int damage, Direction attackDir) {
-		if (Game.isMode("creative") || hurtTime > 0 || Bed.inBed(this)) return; // Can't get hurt in creative, hurt cooldown, or while someone is in bed
+		if (Game.isMode("minicraft.settings.mode.creative") || hurtTime > 0 || Bed.inBed(this)) return; // Can't get hurt in creative, hurt cooldown, or while someone is in bed
 
 		int healthDam = 0;
 		if (this == Game.player) {
@@ -1050,13 +1074,13 @@ public class Player extends Mob implements ItemHolder, ClientTickable {
 			if (this == Game.player) super.doHurt(healthDam, attackDir); // Sets knockback, and takes away health.
 		}
 
-		Sound.playerHurt.play();
+		Sound.play("playerhurt");
 		hurtTime = playerHurtTime;
 	}
 
 	@Override
 	public void remove() {
-		Logger.trace("Removing player from level " + getLevel());
+		Logging.WORLD.trace("Removing player from level " + getLevel());
 		super.remove();
 	}
 

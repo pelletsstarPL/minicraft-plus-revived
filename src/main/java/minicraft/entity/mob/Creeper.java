@@ -6,9 +6,9 @@ import minicraft.core.io.Sound;
 import minicraft.entity.Direction;
 import minicraft.entity.Entity;
 import minicraft.entity.furniture.Spawner;
-import minicraft.gfx.MobSprite;
 import minicraft.gfx.Point;
 import minicraft.gfx.Screen;
+import minicraft.gfx.SpriteLinker.LinkedSprite;
 import minicraft.item.Items;
 import minicraft.level.tile.Tiles;
 
@@ -16,15 +16,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Creeper extends EnemyMob {
-	private static MobSprite[][][] sprites;
-
-	static {
-		sprites = new MobSprite[4][1][2];
-		for (int i = 0; i < 4; i++) {
-			MobSprite[] list = MobSprite.compileSpriteList(4, 0 + (i * 2), 2, 2, 0, 2);
-			sprites[i][0] = list;
-		}
-	}
+	private static LinkedSprite[][][] sprites = new LinkedSprite[][][] {
+		new LinkedSprite[][] {Mob.compileSpriteList(0, 0, 2, 2, 0, 2, "creeper")},
+		new LinkedSprite[][] {Mob.compileSpriteList(0, 2, 2, 2, 0, 2, "creeper")},
+		new LinkedSprite[][] {Mob.compileSpriteList(0, 4, 2, 2, 0, 2, "creeper")},
+		new LinkedSprite[][] {Mob.compileSpriteList(0, 6, 2, 2, 0, 2, "creeper")}
+	};
 
 	private static final int MAX_FUSE_TIME = 60;
 	private static final int TRIGGER_RADIUS = 64;
@@ -33,6 +30,8 @@ public class Creeper extends EnemyMob {
 	private int fuseTime = 0;
 	private boolean fuseLit = false;
 	
+	private final String[] explosionBlacklist = new String[] { "hard rock", "obsidian wall", "raw obsidian"};
+
 	private final String[] explosionBlacklist = new String[] { "hard rock", "obsidian wall", "raw obsidian"};
 
 	public Creeper(int lvl) {
@@ -51,7 +50,7 @@ public class Creeper extends EnemyMob {
 	public void tick() {
 		super.tick();
 
-		if (Game.isMode("Creative")) return; // Creeper should not explode if player is in creative mode
+		if (Game.isMode("minicraft.settings.mode.creative")) return; // Creeper should not explode if player is in creative mode
 
 		if (fuseTime > 0) {
 			fuseTime--; // Fuse getting shorter...
@@ -77,7 +76,7 @@ public class Creeper extends EnemyMob {
 			// It will only blow up if there are any players nearby.
 			if (playerInRange) {
 				// Play explosion sound
-				Sound.explode.play();
+				Sound.play("explode");
 
 				// Figure out which tile the mob died on
 				int xt = x >> 4;
@@ -155,11 +154,11 @@ public class Creeper extends EnemyMob {
 
 	@Override
 	protected void touchedBy(Entity entity) {
-		if (Game.isMode("Creative")) return;
+		if (Game.isMode("minicraft.settings.mode.creative")) return;
 
 		if (entity instanceof Player) {
 			if (fuseTime == 0 && !fuseLit) {
-				Sound.fuse.play();
+				Sound.play("fuse");
 				fuseTime = MAX_FUSE_TIME;
 				fuseLit = true;
 			}

@@ -2,26 +2,23 @@ package minicraft.entity.mob;
 
 import minicraft.core.Game;
 import minicraft.core.Updater;
+import minicraft.core.io.Localization;
 import minicraft.core.io.Sound;
 import minicraft.entity.Direction;
 import minicraft.entity.Entity;
 import minicraft.entity.Spark;
 import minicraft.gfx.Color;
 import minicraft.gfx.Font;
-import minicraft.gfx.MobSprite;
 import minicraft.gfx.Screen;
+import minicraft.gfx.SpriteLinker.LinkedSprite;
 import minicraft.network.Analytics;
 import minicraft.screen.AchievementsDisplay;
 
 public class AirWizard extends EnemyMob {
-	private static final MobSprite[][][] sprites;
-	static {
-		sprites = new MobSprite[2][4][2];
-		for (int i = 0; i < 2; i++) {
-			MobSprite[][] list  = MobSprite.compileMobSpriteAnimations(8, 20 + (i * 2));
-			sprites[i] = list;
-		}
-	}
+	private static final LinkedSprite[][][] sprites = new LinkedSprite[][][] {
+		Mob.compileMobSpriteAnimations(0, 0, "air_wizard"),
+		Mob.compileMobSpriteAnimations(0, 2, "air_wizard")
+	};
 
 	public static boolean beaten = false;
 
@@ -30,7 +27,7 @@ public class AirWizard extends EnemyMob {
 	private int attackType = 0;
 
 	/**
-	 * This is used by the spawner to spawn air wizards. Lvl is unused.
+	 * This is used by the spawner to spawn air wizards. {@code lvl} is unused.
 	 */
 	public AirWizard(int lvl) { this(); }
 
@@ -48,7 +45,7 @@ public class AirWizard extends EnemyMob {
 	public void tick() {
 		super.tick();
 
-		if (Game.isMode("Creative")) return; // Should not attack if player is in creative
+		if (Game.isMode("minicraft.settings.mode.creative")) return; // Should not attack if player is in creative
 
 		if (attackDelay > 0) {
 			xmov = ymov = 0;
@@ -161,18 +158,17 @@ public class AirWizard extends EnemyMob {
 				 p.addScore(100000); // Give the player 100K points.
 		}
 
-		Sound.bossDeath.play();
+		Sound.play("bossdeath");
 
 		Analytics.AirWizardDeath.ping();
-		Updater.notifyAll("Air Wizard Defeated!");
-
+		Updater.notifyAll(Localization.getLocalized("minicraft.notification.air_wizard_defeated"));
 
 		// If this is the first time we beat the air wizard.
 		if (!beaten) {
 			AchievementsDisplay.setAchievement("minicraft.achievement.airwizard", true);
 
 			Analytics.FirstAirWizardDeath.ping();
-			Updater.notifyAll("The Dungeon is now open!", -400);
+			Updater.notifyAll("minicraft.notification.dungeon_opened", -400);
 		}
 
 		beaten = true;
