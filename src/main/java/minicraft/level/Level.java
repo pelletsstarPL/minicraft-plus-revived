@@ -226,62 +226,41 @@ public class Level {
 		checkChestCount(true);
 	}
 	private void checkChestCount(boolean check) {
-		// If the level is the dungeon, and we're not just loading the world...
-		if (depth != -4) return;
 
-		int numChests = 0;
+            // If the level is the dungeon, and we're not just loading the world...
+            if (depth != -5) return;
 
-		if (check) {
-			for (Entity e: entitiesToAdd)
-				if (e instanceof DungeonChest)
-					numChests++;
-			for (Entity e: entities)
-				if (e instanceof DungeonChest)
-					numChests++;
-			Logging.WORLDNAMED.debug("Found " + numChests + " chests.");
-		}
+            int numChests = 0;
 
-		/// Make DungeonChests!
-		for (int i = numChests; i < 10 * (w / 128); i++) {
-			DungeonChest d = new DungeonChest(true);
-			boolean addedchest = false;
-			while (!addedchest) { // Keep running until we successfully add a DungeonChest
+            if (check) {
+                for (Entity e : entitiesToAdd)
+                    if (e instanceof DungeonChest)
+                        numChests++;
+                for (Entity e : entities)
+                    if (e instanceof DungeonChest)
+                        numChests++;
+                if (Game.debug) System.out.println("Found " + numChests + " chests.");
+            }
 
-				// Pick a random tile:
-				int x2 = random.nextInt(16 * w) / 16;
-				int y2 = random.nextInt(16 * h) / 16;
-				if (getTile(x2, y2) == Tiles.get("Obsidian")) {
-					boolean xaxis = random.nextBoolean();
-					if (xaxis) {
-						for (int s = x2; s < w - s; s++) {
-							if (getTile(s, y2) == Tiles.get("Obsidian Wall")) {
-								d.x = s * 20 - 16;
-								d.y = y2 * 24 - 14;
-							}
-						}
-					} else { // y axis
-						for (int s = y2; s < y2 - s; s++) {
-							if (getTile(x2, s) == Tiles.get("Obsidian Wall")) {
-								d.x = x2 * 23 - 14;
-								d.y = s * 21 - 16;
-							}
-						}
-					}
-					if (d.x == 0 && d.y == 0) {
-						d.x = x2 * 16 - 8;
-						d.y = y2 * 16 - 8;
-					}
-					if (getTile(d.x / 16, d.y / 16) == Tiles.get("Obsidian Wall")) {
-						setTile(d.x / 16, d.y / 16, Tiles.get("Obsidian"));
-					}
+            if(!AirWizard.beaten) {
+            /// Make DungeonChests!
+            for (int i = numChests; i < 10 * (w / 128); i++) {
+                DungeonChest d = new DungeonChest(true);
+                boolean addedchest = false;
+                while (!addedchest) { // Keep running until we successfully add a DungeonChest
 
-					add(d);
-					chestCount++;
-					addedchest = true;
-				}
-			}
-		}
-	}
+                    // Pick a random tile:
+                    int x2 = random.nextInt(w-((w/128)*12)) + ((w/128)*12);
+                    int y2 = random.nextInt(h-((h/128)*12)) + ((h/128)*12);
+                    if (getTile(x2, y2) != Tiles.get("Obsidian Wall")) {
+                        add(d,(x2 * 16) + 8, (y2 * 16) + 8);
+                        chestCount++;
+                        addedchest = true;
+                    }
+                }
+            }
+        }
+    }
 
 	private void tickEntity(Entity entity) {
 		if (entity == null) return;
